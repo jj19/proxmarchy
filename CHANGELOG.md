@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.20-beta] — 2026-08-28
+
+### Fixed
+- **`'intel-hda-duplex' is not a valid device model name` on
+  `qm start`.** The HDA codec model name is `hda-duplex`, NOT
+  `intel-hda-duplex` (the latter is just wrong; QEMU errors on
+  it). Fixed the device name in the `-args` line. The ich9-intel-hda
+  controller name is correct as-is.
+
+[0.1.20-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.20-beta
+
 ## [0.1.19-beta] — 2026-08-28
 
 ### Fixed

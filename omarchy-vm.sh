@@ -735,7 +735,16 @@ create_vm() {
   #     qm start <vmid>
   # (For Vulkan passthrough, additionally add ,venus=true and
   #  ensure your QEMU is ≥ 9.0.)
-  qm set "$VMID" -args "-display none -device virtio-gpu,max_outputs=1 -device ich9-intel-hda,id=sound0,bus=pci.0,addr=0x18 -device intel-hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0" >/dev/null
+  # Note on the HDA args:
+  #   -device ich9-intel-hda,id=sound0,bus=pci.0,addr=0x18   — the HDA
+  #     controller (I/O + interrupt registers). The PCI addr 0x18 is a
+  #     common slot for the HDA on ICH9; 0x1b is another valid choice.
+  #   -device hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0  — the
+  #     HDA codec (the actual audio I/O). The model name is
+  #     `hda-duplex` (NOT `intel-hda-duplex` — that's wrong and QEMU
+  #     errors with "'intel-hda-duplex' is not a valid device model
+  #     name" on qm start).
+  qm set "$VMID" -args "-display none -device virtio-gpu,max_outputs=1 -device ich9-intel-hda,id=sound0,bus=pci.0,addr=0x18 -device hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0" >/dev/null
 
   # ── Performance ────────────────────────────────────────────────────────
   # Disable memory ballooning. The default balloon device causes memory
