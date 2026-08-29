@@ -27,7 +27,7 @@ set -eEo pipefail
 #   bash -c "$(curl -fsSL '.../omarchy-vm.sh?nocache='$(date +%s))"
 # The first line of the script's runtime output should always be:
 #   "Proxmarchy omarchy-vm.sh v0.X.Y-beta  (commit: <short SHA>)"
-PROXMARCHY_VERSION="0.1.31-beta"
+PROXMARCHY_VERSION="0.1.32-beta"
 PROXMARCHY_GIT_SHA="${PROXMARCHY_GIT_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 echo "Proxmarchy omarchy-vm.sh ${PROXMARCHY_VERSION}  (commit: ${PROXMARCHY_GIT_SHA})"
 
@@ -668,6 +668,72 @@ build_mac_fix_iso() {
 }
 
 # ----------------------------------------------------------------------------
+# 6c. cidata ISO (cloud-init NoCloud datasource)
+#
+# Why: we want the mac-fix to apply automatically on first boot, without
+# the user having to open a terminal in Hyprland and run anything. The
+# standard Linux mechanism for "run this on first boot" is cloud-init,
+# which looks for a CD-ROM (or any disk) with volume label "cidata" or
+# "config-2" and processes the user-data inside.
+#
+# We attach the cidata drive as ide1. The Omarchy ISO stays on ide2 and
+# is what the firmware boots from. cidata is processed by cloud-init
+# (if installed in the guest) AFTER the OS boots for the first time.
+#
+# If cloud-init isn't installed in the Omarchy image (archinstall's
+# default install doesn't always include it), the cidata drive is just
+# an unread CD-ROM. We don't fail — the user gets a clear "run the
+# GitHub one-liner if cidata didn't apply" message in next-steps as a
+# fallback. Either way, the cidata is a no-op when the conditions
+# aren't met, not a hard error.
+# ----------------------------------------------------------------------------
+build_cidata_iso() {
+  local CIDATA_DIR DATA_ISO INSTANCE_ID
+  CIDATA_DIR="$(mktemp -d)"
+  DATA_ISO="${TEMP_DIR}/proxmarchy-cidata.iso"
+  INSTANCE_ID="proxmarchy-${VMID}-$(date +%s)"
+
+  # user-data: cloud-config that runs on first boot.
+  # - packages: try to install qemu-guest-agent (optional; || true in runcmd)
+  # - runcmd: enable the agent, apply the mac-fix, write a marker file
+  cat > "${CIDATA_DIR}/user-data" <<EOF
+#cloud-config
+# Proxmarchy post-install: applies the mac-fix on first boot via cloud-init.
+# If cloud-init isn't installed in the guest, this drive is just an
+# unread CD-ROM and you'll need to apply the fix manually.
+
+packages:
+  - qemu-guest-agent
+
+runcmd:
+  - systemctl enable --now qemu-guest-agent 2>/dev/null || true
+  - bash -c "\$(curl -fsSL https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/fix-mac-super-key.sh)" 2>/dev/null || true
+  - touch /var/lib/proxmarchy-install-complete
+EOF
+
+  # meta-data: instance ID + hostname (required for cloud-init)
+  cat > "${CIDATA_DIR}/meta-data" <<EOF
+instance-id: ${INSTANCE_ID}
+local-hostname: ${HN}
+EOF
+
+  # Build the ISO with volume label "cidata" (cloud-init's NoCloud
+  # datasource looks for this label)
+  msg_info "Building cidata ISO (label=cidata)"
+  if ! genisoimage -V "cidata" -joliet -rock -o "$DATA_ISO" "$CIDATA_DIR" >/dev/null 2>&1; then
+    msg_error "genisoimage failed for cidata. The VM will still be created —"
+    msg_error "the user can apply the fix manually via the GitHub one-liner."
+    rm -rf "$CIDATA_DIR"
+    return 1
+  fi
+  rm -rf "$CIDATA_DIR"
+  msg_ok "Built $(du -h "$DATA_ISO" | awk '{print $1}') cidata ISO"
+
+  upload_iso_to_storage "$DATA_ISO" "proxmarchy-cidata.iso" "$STORAGE"
+  msg_ok "Uploaded to Proxmox storage as proxmarchy-cidata.iso"
+}
+
+# ----------------------------------------------------------------------------
 # 7. Create the VM
 # ----------------------------------------------------------------------------
 create_vm() {
@@ -759,6 +825,13 @@ create_vm() {
   # local command (no clipboard needed).
   if [[ "$MAC_USER" == "yes" ]]; then
     qm set "$VMID" -ide3 "${STORAGE}:iso/proxmarchy-fix.iso,media=cdrom" >/dev/null
+    # Also attach the cidata drive (cloud-init NoCloud datasource) on
+    # ide1. cloud-init (if installed in the Omarchy image) will detect
+    # the volume label "cidata" and process the user-data on first
+    # boot — which includes auto-applying the mac-fix. If cloud-init
+    # isn't installed, the drive is just an unread CD-ROM; the user
+    # can still apply the fix manually via the GitHub one-liner.
+    qm set "$VMID" -ide1 "${STORAGE}:iso/proxmarchy-cidata.iso,media=cdrom" >/dev/null
   fi
 
   # Boot order: ISO first, disk second.
@@ -846,6 +919,133 @@ post_install_cleanup() {
 }
 
 # ----------------------------------------------------------------------------
+# 7c. Post-install completion (--complete <vmid>)
+#
+# This is the user-facing counterpart to the v0.1.28-beta loop-breaker
+# one-liner. After the Omarchy wizard finishes and the user is looking
+# at Hyprland for the first time, they run:
+#
+#     bash omarchy-vm.sh --complete <vmid>
+#
+# This does ALL the host-side cleanup in one shot:
+#   1. Gracefully stops the VM (so the install-loop re-runs don't fight
+#      with the detach)
+#   2. Detaches ide1 (cidata), ide2 (Omarchy ISO), ide3 (fix CD-ROM)
+#   3. Switches boot order from `ide2;scsi0` (ISO first) to `scsi0` only
+#   4. Removes the source ISOs from Proxmox storage to free disk space
+#   5. Starts the VM, which now boots from disk into Hyprland
+#
+# Idempotent: safe to run multiple times.
+# ----------------------------------------------------------------------------
+complete_install() {
+  local vmid="$1"
+
+  if ! qm status "$vmid" &>/dev/null; then
+    msg_error "VM $vmid does not exist (or this isn't a Proxmox host)"
+    return 1
+  fi
+
+  echo
+  msg_info "Proxmarchy post-install completion for VM ${vmid}"
+  echo
+
+  # 1. Stop the VM gracefully
+  msg_info "Stopping VM ${vmid}"
+  if qm stop "$vmid" 2>/dev/null; then
+    msg_ok "Stopped"
+  else
+    msg_info "VM was already stopped"
+  fi
+
+  # 2. Detach all install-time CD-ROMs (cidata, Omarchy ISO, fix CD-ROM).
+  # Each is a no-op if the device isn't there (idempotent).
+  for dev in ide1 ide2 ide3; do
+    if qm set "$vmid" -delete "$dev" >/dev/null 2>&1; then
+      msg_ok "Detached ${dev}"
+    fi
+  done
+
+  # 3. Switch boot order to disk-only. With all ISOs detached, the
+  # firmware will only try scsi0.
+  qm set "$vmid" -boot "order=scsi0" >/dev/null && msg_ok "Boot order: scsi0 only"
+
+  # 4. Remove the source ISOs from Proxmox storage to free disk space.
+  # Best-effort; missing files are fine.
+  local ISO_DIR
+  ISO_DIR=$(storage_iso_dir "$STORAGE" 2>/dev/null || true)
+  if [[ -n "$ISO_DIR" ]]; then
+    local ISO_TARGET_DIR="${ISO_DIR}/template/iso"
+    rm -f "${ISO_TARGET_DIR}/omarchy-"*.iso 2>/dev/null && \
+      msg_ok "Removed Omarchy ISO from Proxmox storage (~6 GB freed)" || true
+    rm -f "${ISO_TARGET_DIR}/proxmarchy-fix.iso" 2>/dev/null && \
+      msg_ok "Removed mac-fix data ISO from Proxmox storage" || true
+    rm -f "${ISO_TARGET_DIR}/proxmarchy-cidata.iso" 2>/dev/null && \
+      msg_ok "Removed cidata ISO from Proxmox storage" || true
+  fi
+
+  # 5. Start the VM
+  msg_info "Starting VM ${vmid}"
+  qm start "$vmid" >/dev/null && msg_ok "Started — VM will boot from disk into Hyprland"
+
+  echo
+  echo -e "${GN}${BOLD}✓ Post-install complete.${CL}"
+  echo
+  echo -e "  ${BOLD}What's next${CL}"
+  echo -e "  • Open the Proxmox console for VM ${BOLD}${vmid}${CL} (noVNC)."
+  echo -e "  • The VM should land on the SDDM graphical login screen — log in as the"
+  echo -e "    user you created during the wizard."
+  echo -e "  • If cloud-init was in the Omarchy image, the mac-fix was already applied"
+  echo -e "    on first boot — try ${YW}Alt+Space${CL} for the Omarchy menu. You're done."
+  echo -e "  • If cloud-init wasn't there, run the fallback one-liner in a terminal"
+  echo -e "    inside Hyprland:"
+  echo
+  echo -e "      ${BL}curl -fsSL https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/fix-mac-super-key.sh | bash${CL}"
+  echo
+}
+
+# ----------------------------------------------------------------------------
+# 7d. VM destruction (--destroy <vmid>)
+# ----------------------------------------------------------------------------
+destroy_vm() {
+  local vmid="$1"
+  if ! qm status "$vmid" &>/dev/null; then
+    msg_error "VM $vmid does not exist"
+    return 1
+  fi
+  msg_info "Stopping VM ${vmid}"
+  qm stop "$vmid" 2>/dev/null || true
+  msg_info "Destroying VM ${vmid}"
+  qm destroy "$vmid" && msg_ok "Destroyed VM ${vmid}"
+}
+
+# ----------------------------------------------------------------------------
+# 7e. Print top-level help
+# ----------------------------------------------------------------------------
+print_help() {
+  cat <<'EOF'
+Proxmarchy — Proxmox-host one-liner installer for Omarchy
+
+Usage:
+  omarchy-vm.sh                          Create a new Omarchy VM
+  omarchy-vm.sh --complete <vmid>        Post-install completion (one command)
+  omarchy-vm.sh --destroy  <vmid>        Destroy the VM
+  omarchy-vm.sh --help                   Show this help
+
+Typical flow (one-liner, then this):
+  1. bash -c "$(curl -fsSL https://.../omarchy-vm.sh)"
+     → walks through the whiptail wizard, creates VM 105, starts it
+  2. Walk through the Omarchy ISO installer in the Proxmox console (noVNC)
+  3. After the wizard finishes and Hyprland is up:
+        bash omarchy-vm.sh --complete 105
+     → one command does ALL host-side cleanup (detach ISOs, change
+       boot order, remove source ISOs, restart the VM)
+
+If you ever need to start over, --destroy 105 wipes the VM and a fresh
+`omarchy-vm.sh` run creates it again.
+EOF
+}
+
+# ----------------------------------------------------------------------------
 # 8. Main
 # ----------------------------------------------------------------------------
 main() {
@@ -870,6 +1070,10 @@ main() {
   # to a file we already placed in the VM.
   if [[ "$MAC_USER" == "yes" ]]; then
     build_mac_fix_iso
+    # Also build the cidata drive so cloud-init (if installed in the
+    # Omarchy image) auto-applies the fix on first boot. The user can
+    # still fall back to the manual one-liner if cidata didn't take.
+    build_cidata_iso
   fi
 
   create_vm
@@ -950,22 +1154,30 @@ main() {
   echo -e "  ${YW}  2. Switch to its TTY: \`Ctrl+Alt+F7\` (or F1/F8 if F7 is blank)"
   echo -e "  ${YW}  3. Log in via the SDDM GUI. Hyprland starts automatically on success.${CL}"
   echo
-  echo -e "${RD}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${CL}"
-  echo -e "${RD}${BOLD}  STOP THE INSTALL LOOP — run this on the Proxmox host after install${CL}"
-  echo -e "${RD}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${CL}"
-  echo -e "  Because the boot order is ${YW}ide2;scsi0${CL} (ISO first, disk second) and the"
-  echo -e "  Omarchy ISO is still attached to ${YW}ide2${CL}, the VM will keep running the"
-  echo -e "  installer on every reboot. Once the wizard finishes and you're looking at"
-  echo -e "  Hyprland for the first time, open a shell on ${BOLD}${HN}${CL} and run:"
+  echo -e "${GN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${CL}"
+  echo -e "${GN}${BOLD}  AFTER THE WIZARD: one command does all the host-side cleanup${CL}"
+  echo -e "${GN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${CL}"
+  echo -e "  When the wizard finishes and you're looking at Hyprland for the first time,"
+  echo -e "  run this on the Proxmox host (one command, idempotent):"
   echo
-  echo -e "      ${GN}${BOLD}qm stop ${VMID} && qm set ${VMID} -boot order=scsi0 -delete ide2 && qm start ${VMID}${CL}"
+  echo -e "      ${GN}${BOLD}bash omarchy-vm.sh --complete ${VMID}${CL}"
   echo
-  echo -e "  That one line: stops the VM, switches the boot order to disk-first, detaches"
-  echo -e "  the Omarchy ISO, and starts the VM. From then on it boots straight into"
-  echo -e "  the installed Hyprland. If you're on noVNC when the install finishes, just"
-  echo -e "  switch to the Proxmox host terminal and paste that line — the VM is still"
-  echo -e "  running the installer in the background and you won't lose any state."
-  echo -e "${RD}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${CL}"
+  echo -e "  That: stops the VM, detaches ide1 (cidata) + ide2 (Omarchy ISO) + ide3 (fix"
+  echo -e "  CD-ROM), switches boot order to disk-only, removes the source ISOs from"
+  echo -e "  Proxmox storage (~6 GB freed), and starts the VM. From then on it boots"
+  echo -e "  straight into the installed Hyprland."
+  if [[ "$MAC_USER" == "yes" ]]; then
+    echo
+    echo -e "  ${BOLD}If cloud-init was in the Omarchy image${CL} (it usually is): the mac-fix was"
+    echo -e "  applied automatically on first boot. After --complete, log in via SDDM and"
+    echo -e "  ${YW}Alt+Space${CL} should open the Omarchy menu. Done."
+    echo
+    echo -e "  ${BOLD}If cloud-init wasn't there${CL} (rare, but possible): after --complete, open a"
+    echo -e "  terminal in Hyprland and run the fallback one-liner:"
+    echo
+    echo -e "      ${BL}curl -fsSL https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/fix-mac-super-key.sh | bash${CL}"
+  fi
+  echo -e "${GN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${CL}"
   echo
   echo -e "${INFO}${BOLD}Cleanup after install (manual, optional — only when you're done with the VM)${CL}"
   echo -e "  Once you've broken the install loop (above) and run the mac-fix (if applicable),"
@@ -984,4 +1196,48 @@ main() {
   echo
 }
 
-main "$@"
+# ----------------------------------------------------------------------------
+# 9. Command dispatch
+# ----------------------------------------------------------------------------
+# Parse the first arg. If it's a subcommand, run it (after a minimal
+# env check). Otherwise, fall through to the default create-VM flow.
+case "${1:-}" in
+  --complete)
+    shift
+    CVMID="${1:-}"
+    if [[ -z "$CVMID" ]]; then
+      echo "Usage: omarchy-vm.sh --complete <vmid>" >&2
+      exit 1
+    fi
+    check_root
+    pve_check
+    require_tools
+    complete_install "$CVMID"
+    exit $?
+    ;;
+  --destroy)
+    shift
+    DVMID="${1:-}"
+    if [[ -z "$DVMID" ]]; then
+      echo "Usage: omarchy-vm.sh --destroy <vmid>" >&2
+      exit 1
+    fi
+    check_root
+    pve_check
+    destroy_vm "$DVMID"
+    exit $?
+    ;;
+  --help|-h)
+    print_help
+    exit 0
+    ;;
+  "")
+    # No args: default flow (create VM)
+    main "$@"
+    ;;
+  *)
+    echo "Unknown command: $1" >&2
+    echo "Run 'omarchy-vm.sh --help' for usage." >&2
+    exit 1
+    ;;
+esac

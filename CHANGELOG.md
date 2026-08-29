@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.32-beta] — 2026-08-29
+
+### Added
+- **cidata drive (cloud-init NoCloud datasource) attached as ide1
+  for Mac users.** The user-data cloud-config installs
+  qemu-guest-agent, enables it, applies the mac-fix on first
+  boot, and writes a marker file. If the Omarchy image includes
+  cloud-init (most archinstall-based installs do), the mac-fix
+  is applied automatically — no user action needed beyond
+  `--complete` and logging into SDDM. If cloud-init isn't
+  installed, the cidata drive is just an unread CD-ROM and the
+  user falls back to the GitHub one-liner (printed in
+  next-steps and the `--complete` output).
+- **`--complete <vmid>` subcommand.** Replaces the v0.1.28-beta
+  manual "stop the install loop" one-liner. Does ALL host-side
+  cleanup in one invocation: stops the VM, detaches ide1 + ide2
+  + ide3, switches boot order to disk-only, removes the source
+  ISOs from Proxmox storage (~6 GB freed), and starts the VM.
+  Idempotent — safe to run multiple times. Prints the fallback
+  one-liner for the mac-fix (in case cloud-init didn't take).
+- **`--destroy <vmid>` subcommand** for quick VM teardown.
+- **`--help` subcommand** with the full usage block.
+- **Replaced the v0.1.28-beta "STOP THE INSTALL LOOP" red banner**
+  with a green "AFTER THE WIZARD: one command does all the
+  host-side cleanup" banner that points at `--complete`. The
+  install-loop problem is now solved by the subcommand, not by
+  a one-liner the user has to remember.
+
+### Changed
+- **The post-install workflow is now: wizard → `--complete` →
+  log in.** Down from 4-5 manual steps (loop-breaker, ISO
+  detach, ide3 detach, fix script, login). Mac users with
+  cloud-init in the image: 2 actions after the wizard
+  (`--complete`, login). Mac users without cloud-init: 3
+  actions (`--complete`, login, curl fallback). Non-Mac users:
+  2 actions (`--complete`, login).
+
+[0.1.32-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.32-beta
+
 ## [0.1.31-beta] — 2026-08-29
 
 ### Added
