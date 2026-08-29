@@ -27,7 +27,7 @@ set -eEo pipefail
 #   bash -c "$(curl -fsSL '.../omarchy-vm.sh?nocache='$(date +%s))"
 # The first line of the script's runtime output should always be:
 #   "Proxmarchy omarchy-vm.sh v0.X.Y-beta  (commit: <short SHA>)"
-PROXMARCHY_VERSION="0.1.25-beta"
+PROXMARCHY_VERSION="0.1.26-beta"
 PROXMARCHY_GIT_SHA="${PROXMARCHY_GIT_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 echo "Proxmarchy omarchy-vm.sh ${PROXMARCHY_VERSION}  (commit: ${PROXMARCHY_GIT_SHA})"
 
@@ -777,10 +777,16 @@ start_vm() {
 }
 
 # ----------------------------------------------------------------------------
-# 7b. Post-install cleanup
-#   - If the user opted in, also drop the Omarchy ISO to reclaim ~6 GB.
-#   - The TEMP_DIR was already cleaned up by the EXIT trap, so we only deal
-#     with the copies that ended up in the Proxmox storage pool.
+# 7b. Post-install cleanup (MANUAL — do not call automatically)
+#   - This detaches ide2 (Omarchy ISO) and ide3 (mac-fix data ISO)
+#     and removes their source ISOs from Proxmox storage.
+#   - It is meant to be invoked BY THE USER after the install is done
+#     and (if applicable) the mac-fix has been run. It is NOT called
+#     from main() — calling it there would hot-unplug the fix CD-ROM
+#     from the running VM before the user could ever use it.
+#   - Easier alternative: re-run omarchy-vm.sh with the same VMID
+#     and pick "destroy + recreate" in the script's whiptail dialog
+#     (or let it auto-recreate). That gives you a fully clean state.
 # ----------------------------------------------------------------------------
 post_install_cleanup() {
   local ISO_DIR ISO_FILE_TO_REMOVE
@@ -851,21 +857,29 @@ main() {
 
   create_vm
   start_vm
-  post_install_cleanup
+
+  # NOTE: We deliberately do NOT call post_install_cleanup here. That
+  # function detaches ide2 (Omarchy ISO) and ide3 (mac-fix data ISO)
+  # and deletes the source ISOs from Proxmox storage — but it would
+  # run while the user is still in the live ISO installer, hot-unplug
+  # the fix CD-ROM before the user has a chance to use it, and (worse)
+  # detach the Omarchy ISO the VM is currently booting from. The
+  # user invokes cleanup manually after install — see the "Cleanup
+  # after install" section in next-steps below, and the
+  # post_install_cleanup function in this script.
 
   echo
   msg_ok "Omarchy VM ${BGN}${VMID}${CL} (${BL}${HN}${CL}) is ready."
   echo
-  if [[ "$CLEANUP_ISO" == "yes" ]]; then
-    echo -e "${INFO}${BOLD}Cleanup${CL}"
-    echo -e "  • Omarchy ISO: ${YW}detached from VM and removed from Proxmox storage (~6 GB freed)${CL}"
-    echo -e "  • The downloaded copy in the script's TEMP_DIR was already wiped on exit"
-    echo
-  else
-    echo -e "${INFO}${BOLD}Cleanup${CL}"
-    echo -e "  • Omarchy ISO: ${YW}KEPT in Proxmox storage (re-attach later if you want to re-install)${CL}"
-    echo
+  echo -e "${INFO}${BOLD}What was attached${CL}"
+  echo -e "  • ide2: Omarchy installer ISO (${BL}${ISO_FILE}${CL}) — the VM boots from it"
+  if [[ "$MAC_USER" == "yes" ]]; then
+    echo -e "  • ide3: proxmarchy-fix data ISO (~10 KB, label FIX) — for the post-install fix"
   fi
+  if [[ -n "${ISO_FILE:-}" ]]; then
+    echo -e "  • Storage copy of the Omarchy ISO: ${BL}/var/lib/vz/template/iso/${ISO_FILE}${CL}"
+  fi
+  echo
   echo -e "${INFO}${BOLD}Next steps${CL}"
   echo -e "  • Open the Proxmox console for VM ${BOLD}${VMID}${CL} (noVNC or xterm.js)."
   echo -e "  • The VM boots from the Omarchy ISO — walk through the wizard in the"
@@ -900,6 +914,22 @@ main() {
   echo -e "  • ${BOLD}That update flow pulls from${CL} ${BL}${OMARCHY_REPO}${CL} ${BOLD}and from the"
   echo -e "    Omarchy pacman mirror — so the in-VM ${YW}omarchy update${CL}${BOLD} IS the way to"
   echo -e "    stay on the latest Omarchy release, not just the latest Arch packages.${CL}"
+  echo
+  echo -e "${INFO}${BOLD}Cleanup after install (manual, when you're done)${CL}"
+  echo -e "  When the install is finished AND you've run the mac-fix (if applicable),"
+  echo -e "  you can free disk space and tidy the VM config with:"
+  echo -e "      ${YW}qm set ${VMID} -delete ide2${CL}    # detach the Omarchy ISO (no longer needed)"
+  if [[ "$MAC_USER" == "yes" ]]; then
+    echo -e "      ${YW}qm set ${VMID} -delete ide3${CL}    # detach the mac-fix data ISO"
+  fi
+  if [[ "$CLEANUP_ISO" == "yes" ]]; then
+    echo -e "      ${YW}rm /var/lib/vz/template/iso/${ISO_FILE}${CL}    # ~6 GB freed"
+  fi
+  if [[ "$MAC_USER" == "yes" ]]; then
+    echo -e "      ${YW}rm /var/lib/vz/template/iso/proxmarchy-fix.iso${CL}    # ~10 KB freed"
+  fi
+  echo -e "  Re-running this script with the same VMID will ${YW}qm destroy${CL} and recreate"
+  echo -e "  the VM from scratch, which is equivalent to a full cleanup."
   echo
 }
 

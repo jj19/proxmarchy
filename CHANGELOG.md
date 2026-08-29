@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.26-beta] — 2026-08-29
+
+### Fixed
+- **mac-fix data CD-ROM vanishing during the Omarchy install.**
+  Root cause: `main()` called `post_install_cleanup` immediately
+  after `start_vm`, before the user had even opened the Proxmox
+  console. The cleanup ran `qm set $VMID -delete ide3` on the
+  running VM, hot-unplugging the fix CD-ROM while the user was
+  still in the live ISO installer. By the time the wizard rebooted
+  the VM, the fix was already gone — the user saw the symptom as
+  "Omarchy setup reboots and the fix drops", but the reboot was
+  a red herring; the script's own auto-cleanup was the cause.
+
+  Removed the `post_install_cleanup` call from `main()`. The
+  function still exists (it's documented in the source and listed
+  in the new "Cleanup after install" section of the next-steps)
+  but the user has to invoke it manually — after the install is
+  finished AND the mac-fix has been run.
+
+  Replaced the old "Cleanup" status block in next-steps with a
+  "Cleanup after install (manual, when you're done)" section
+  showing the exact `qm set ... -delete ideN` and `rm ...` commands
+  the user can run when they're ready. Also added a "What was
+  attached" block that shows what's currently on the VM's
+  CD-ROM buses, so the user can see the state at a glance.
+
+  Easier alternative for the user: re-run `omarchy-vm.sh` with
+  the same VMID and let the script's `qm destroy` + recreate
+  give them a fully clean state.
+
+[0.1.26-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.26-beta
+
 ## [0.1.25-beta] — 2026-08-29
 
 ### Changed
