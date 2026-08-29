@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.12-beta] — 2026-08-28
+
+### Fixed
+- **`upload_iso_to_storage: command not found` at the mac fix
+  data ISO upload step.** When v0.1.5 refactored `download_omarchy_iso`
+  to handle the Omarchy ISO upload itself, the now-redundant
+  `upload_iso_to_storage` helper was deleted. v0.1.11 added a call
+  to it from `build_mac_fix_iso()` without bringing the helper
+  back, so the data ISO step errored on first run. Re-adds the
+  helper (used only by `build_mac_fix_iso()`; the main Omarchy ISO
+  is still uploaded inline inside `download_omarchy_iso()`).
+
+[0.1.12-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.12-beta
+
 ## [0.1.11-beta] — 2026-08-28
 
 ### Added

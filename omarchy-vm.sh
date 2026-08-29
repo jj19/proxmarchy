@@ -510,6 +510,30 @@ storage_iso_dir() {
 }
 
 # ----------------------------------------------------------------------------
+# 4c. Upload a file into a Proxmox storage's ISO directory.
+#     Used by build_mac_fix_iso() for the data CD-ROM. Errors out with
+#     a clear message if the chosen storage has no local filesystem path
+#     (LVM-thin / ZFS / Ceph) — same constraint as the main ISO upload.
+# ----------------------------------------------------------------------------
+upload_iso_to_storage() {
+  local SRC_FILE="$1"
+  local DEST_NAME="$2"
+  local STORAGE="$3"
+
+  local ISO_DIR
+  ISO_DIR=$(storage_iso_dir "$STORAGE")
+  if [[ -n "$ISO_DIR" ]]; then
+    mkdir -p "${ISO_DIR}/template/iso"
+    cp -f "$SRC_FILE" "${ISO_DIR}/template/iso/${DEST_NAME}"
+    msg_ok "Stored ${BL}${DEST_NAME}${CL} in ${BL}${ISO_DIR}/template/iso/${CL}"
+    return 0
+  fi
+  msg_error "Storage '${STORAGE}' has no local path (LVM-thin / ZFS / Ceph / etc.)."
+  msg_error "Pick a dir-backed storage for the data ISO (typical: 'local')."
+  exit 1
+}
+
+# ----------------------------------------------------------------------------
 # 5. Pull the latest Omarchy ISO (always fresh — but reuse if already there)
 # ----------------------------------------------------------------------------
 download_omarchy_iso() {
