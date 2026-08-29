@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8-beta] — 2026-08-28
+
+### Added
+- **New script: `fix-mac-super-key.sh`** — in-VM one-liner that
+  swaps Alt and Super inside Hyprland by adding
+  `kb_options = altwin:swap_alt_win` to `~/.config/hypr/hyprland.conf`.
+  After it runs, `Alt + Space` opens the Omarchy menu, `Alt + Enter`
+  opens a terminal, and every other Super+X keybind re-maps to
+  Alt+X — which noVNC passes through cleanly on macOS. Backs up
+  the config first to
+  `~/.config/hypr/backup-super-fix/hyprland.conf.bak.<timestamp>`
+  and reloads Hyprland via `hyprctl reload` so the change takes
+  effect immediately. Supports `--undo` to restore the backup.
+- README: documented the new script and pointed macOS users at it
+  as the recommended GUI workflow (in addition to the existing
+  SSH-based fallback).
+
+[0.1.8-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.8-beta
+
 ## [0.1.7-beta] — 2026-08-28
 
 ### Changed

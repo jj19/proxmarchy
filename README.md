@@ -130,18 +130,46 @@ tradeoffs depending on your platform:
 
 - **Linux / Windows desktop user**: install `virt-viewer` and use SPICE
   for everything. Best keyboard, no fuss.
-- **macOS user (pragmatic)**: use noVNC for the install wizard, then
-  **SSH into the VM** for everything post-install:
+- **macOS user — pure GUI via noVNC**: open the Proxmox noVNC console
+  for the VM, then fix the Super key with the one-liner below. After
+  it runs, `Alt + Space` opens the Omarchy menu, `Alt + Enter` opens
+  a terminal, and every other Super+X keybind in Omarchy also remaps
+  to Alt+X.
+
+  ```bash
+  # Inside the VM (in any terminal — right-click the Hyprland desktop
+  # for one, or press Ctrl+Alt+T):
+  bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/jj19/proxmarchy/main/fix-mac-super-key.sh?nocache='$(date +%s))"
+  ```
+
+  What it does:
+  1. Backs up `~/.config/hypr/hyprland.conf` to
+     `~/.config/hypr/backup-super-fix/hyprland.conf.bak.<timestamp>`.
+  2. Adds `kb_options = altwin:swap_alt_win` to the `input { ... }`
+     block (or appends a new one). This swaps Alt and Super at the
+     XKB level inside Hyprland, so Omarchy's `bind = SUPER, X, ...`
+     keybinds now fire on the physical Alt key — which noVNC
+     passes through cleanly.
+  3. Runs `hyprctl reload` so the change takes effect immediately
+     (no log out required).
+
+  To revert: re-run the same command with `--undo`.
+
+  Optional — make your physical Mac Cmd key act as Alt in the VM
+  too, so your muscle memory works: install
+  [Karabiner-Elements](https://karabiner-elements.pqrs.org/) on
+  the Mac and add a "Simple Modification": `left_command` →
+  `left_alt`. After that, pressing Cmd on your Mac is equivalent
+  to pressing Alt in the VM, and Omarchy's Super keybinds fire.
+
+- **macOS user — SSH-based workflow** (if you don't want to fight
+  the keyboard at all): use noVNC for the install wizard, then
   ```bash
   ssh omarchy@<vm-ip>
   ```
   Find the VM's IP from the Proxmox UI (VM → Summary) or run
   `ip -4 addr show` from the noVNC console once the VM is on the
-  network. SSH gives you a real terminal, full keyboard, copy/paste —
-  better than fighting noVNC for most things. When you really need
-  the Hyprland desktop, drop into noVNC and remap Super to Right Alt
-  or Caps Lock in `~/.config/hypr/hyprland.conf` (the Omarchy menu's
-  "Show keybinds" cheat sheet will tell you what's bound to what).
+  network. SSH gives you a real terminal, full keyboard, copy/paste.
 
 ---
 
@@ -217,12 +245,13 @@ stale mirror anywhere in the chain.
 
 ```
 omarchy/
-├── omarchy-vm.sh        # Proxmox-host one-liner (this is the main one)
-├── omarchy-in-vm.sh     # in-VM one-liner (Arch → Omarchy)
-├── README.md            # this file
-├── LICENSE              # MIT
-├── CHANGELOG.md         # per-version notes
-└── VERSION              # current version
+├── omarchy-vm.sh          # Proxmox-host one-liner (this is the main one)
+├── omarchy-in-vm.sh       # in-VM one-liner (Arch → Omarchy)
+├── fix-mac-super-key.sh   # in-VM one-liner: remap Super → Alt for noVNC on macOS
+├── README.md              # this file
+├── LICENSE                # MIT
+├── CHANGELOG.md           # per-version notes
+└── VERSION                # current version
 ```
 
 ---
