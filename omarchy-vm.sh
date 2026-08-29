@@ -74,11 +74,14 @@ msg_error(){ echo -e "\r\033[K${CROSS}${RD}$1${CL}"; }
 header_info() {
   clear
   cat <<'EOF'
-   ___  __  __                             __  __
-  / _ \/ / / /  ___ __________  ___  ___  / /_/ /
- / // / /_/ / / _ `/ __/ __/ _ \/ _ \/ _ \/ __/_/
-/____/\____/_/\_,_/_/  \__/\___/_//_/_//_/\__/  
-                                                  
+
+  ____                          __         __                                  
+ / __ \____ _____ _____ ___  __/ /_  ___  / /_                                 
+/ __/ / __ `/ __ `/ __ `__ \/ __ \/ _ \/ __/                                 
+/ /___/ /_/ / /_/ / / / / / / /_/ /  __/ /_                                   
+/_____/\__,_/\__, /_/ /_/ /_/_.___/\___/\__/                                   
+            /____/                                                           
+                                                                              
 EOF
 }
 
@@ -352,6 +355,31 @@ exit_script() {
 # ----------------------------------------------------------------------------
 # 4. Storage pick
 # ----------------------------------------------------------------------------
+# Check whether a Proxmox storage has 'images' in its content types.
+# 'pvesm status' doesn't expose the content list, so we read it from
+# /etc/pve/storage.cfg. 'images' is the content type required for VM
+# disks (and EFI disks) in PVE 8/9.
+storage_supports_images() {
+  local st="$1"
+  local content_csv
+  content_csv=$(awk -v s="$st" '
+    $1 ~ /^[a-zA-Z0-9_.-]+:$/ {
+      current = $2
+      in_storage = (current == s)
+      next
+    }
+    in_storage && $1 == "content" {
+      # emit just the comma-separated content list, no whitespace, no key
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+      sub(/^content[[:space:]]+/, "")
+      gsub(/[[:space:]]/, "")
+      print
+      exit
+    }
+  ' /etc/pve/storage.cfg 2>/dev/null)
+  [[ ",$content_csv," == *",images,"* ]] && echo "yes"
+}
+
 pick_storage() {
   local STORAGE_MENU=()
   local VALID TAG TYPE FREE ITEM OFFSET MSG_MAX_LENGTH=0
@@ -377,13 +405,69 @@ pick_storage() {
   else
     while [[ -z "${STORAGE:+x}" ]]; do
       STORAGE=$(whiptail --backtitle "Proxmox VE Helper Scripts" \
-        --title "Storage Pools" --radiolist \
-        "Which storage pool for ${HN} ISO + disk? (Space to select)\nPick a dir-backed one — script copies the ISO into it directly." \
+        --title "ISO Storage" --radiolist \
+        "Which storage pool should hold the Omarchy ISO + cidata?\nPick a dir-backed one — script copies the files into it directly." \
         16 $((MSG_MAX_LENGTH + 23)) 6 \
         "${STORAGE_MENU[@]}" 3>&1 1>&2 2>&3) || exit_script
     done
   fi
-  msg_ok "Using storage: ${BL}${STORAGE}${CL}"
+  msg_ok "ISO storage: ${BL}${STORAGE}${CL}"
+}
+
+# Proxmox 8/9 default installs split things: 'local' is dir-backed and holds
+# ISOs, 'local-lvm' is LVM-thin and holds VM images. They can't be the same
+# pool, so if the ISO storage doesn't also have 'images' in its content list,
+# we need to pick a separate disk storage. This was the v0.1.0-beta bug that
+# surfaced as "storage 'local' does not support vm images" on 9.1.x.
+pick_disk_storage() {
+  if [[ "$(storage_supports_images "$STORAGE")" == "yes" ]]; then
+    DISK_STORAGE="$STORAGE"
+    msg_ok "Disk storage: ${BL}${DISK_STORAGE}${CL}  ${YW}(same pool as ISO — has images content)${CL}"
+    return 0
+  fi
+
+  # ISO storage does NOT support VM images. Auto-pick a sensible default
+  # (the typical 'local-lvm') and fall back to a whiptail prompt.
+  local IMG_MENU=() VALID TAG TYPE FREE ITEM OFFSET MSG_MAX_LENGTH=0
+  while read -r line; do
+    TAG=$(echo "$line" | awk '{print $1}')
+    TYPE=$(echo "$line" | awk '{printf "%-10s", $2}')
+    FREE=$(echo "$line" | numfmt --field 4-6 --from-unit=K --to=iec --format %.2f | awk '{printf("%9sB", $6)}')
+    ITEM="  Type: $TYPE Free: $FREE "
+    OFFSET=2
+    if (( ${#ITEM} + OFFSET > MSG_MAX_LENGTH )); then
+      MSG_MAX_LENGTH=$(( ${#ITEM} + OFFSET ))
+    fi
+    IMG_MENU+=("$TAG" "$ITEM" "OFF")
+  done < <(pvesm status -content images 2>/dev/null | awk 'NR>1')
+  VALID=$(pvesm status -content images 2>/dev/null | awk 'NR>1')
+  if [[ -z "$VALID" ]]; then
+    msg_error "Storage '${STORAGE}' holds the ISO, but no storage on this node has 'images' content for the VM disk."
+    msg_error "Add one in Datacenter → Storage → Add (LVM-Thin, ZFS, Ceph, or directory-with-images)."
+    exit 1
+  fi
+
+  # Prefer local-lvm as the default if it exists, else the only one available.
+  local DEFAULT_DISK=""
+  for tag in "${IMG_MENU[@]}"; do
+    [[ "$tag" == "local-lvm" ]] && DEFAULT_DISK="local-lvm"
+  done
+  if [[ -z "$DEFAULT_DISK" ]]; then
+    DEFAULT_DISK="${IMG_MENU[0]}"
+  fi
+
+  if (( ${#IMG_MENU[@]} / 3 == 1 )); then
+    DISK_STORAGE="${IMG_MENU[0]}"
+  else
+    while [[ -z "${DISK_STORAGE:+x}" ]]; do
+      DISK_STORAGE=$(whiptail --backtitle "Proxmox VE Helper Scripts" \
+        --title "Disk Storage" --radiolist \
+        "Storage '${STORAGE}' holds ISOs but NOT VM disks.\n\nPick the pool for the ${DISK_SIZE}G Omarchy disk + 4M EFI disk\n(typical: 'local-lvm' on Proxmox 8/9 defaults)." \
+        20 $((MSG_MAX_LENGTH + 23)) 6 \
+        "${IMG_MENU[@]}" 3>&1 1>&2 2>&3) || exit_script
+    done
+  fi
+  msg_ok "Disk storage: ${BL}${DISK_STORAGE}${CL}  ${YW}(ISO stays on '${STORAGE}')${CL}"
 }
 
 # ----------------------------------------------------------------------------
@@ -590,7 +674,7 @@ create_vm() {
     -scsihw virtio-scsi-single
 
   # EFI disk (no Secure Boot pre-enrolled keys — Hyprland/limine path)
-  qm set "$VMID" -efidisk0 "${STORAGE}:0,efitype=4m,pre-enrolled-keys=0" >/dev/null
+  qm set "$VMID" -efidisk0 "${DISK_STORAGE}:0,efitype=4m,pre-enrolled-keys=0" >/dev/null
 
   # VirtIO-GPU is the recommended Wayland display for Hyprland on Proxmox
   qm set "$VMID" -vga virtio,memory=64 >/dev/null
@@ -598,7 +682,7 @@ create_vm() {
   qm set "$VMID" -serial0 socket >/dev/null
 
   # Main OS disk (will be filled by the ISO installer)
-  qm set "$VMID" -scsi0 "${STORAGE}:${VMID},iothread=1,discard=on,ssd=1,size=${DISK_SIZE}G" >/dev/null
+  qm set "$VMID" -scsi0 "${DISK_STORAGE}:${VMID},iothread=1,discard=on,ssd=1,size=${DISK_SIZE}G" >/dev/null
 
   # Attach the official Omarchy ISO
   qm set "$VMID" -ide2 "${STORAGE}:iso/${ISO_FILE},media=cdrom" >/dev/null
@@ -697,6 +781,7 @@ main() {
 
   start_script
   pick_storage
+  pick_disk_storage
   download_omarchy_iso
 
   if [[ "$UNATTENDED" == "yes" ]]; then

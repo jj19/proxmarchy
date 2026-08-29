@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2-beta] — 2026-08-28
+
+### Fixed
+- **Storage split for Proxmox 8/9 defaults.** On a default Proxmox 9
+  install, the `local` storage only has `iso, vztmpl, backup` in its
+  `content` list — it does NOT have `images`, so `qm set ... -efidisk0
+  local:0,...` fails with "storage 'local' does not support vm
+  images". The script now picks a separate disk storage that does
+  have `images` (typically `local-lvm`), keeps the ISO/cidata on the
+  dir-backed `local`, and tells you what it's doing. On a default
+  Proxmox 8 install (where `local` is the all-in-one pool) it
+  transparently uses the same storage for both.
+- The content check is now read from `/etc/pve/storage.cfg` instead
+  of `pvesm status` (which doesn't expose the `content` field).
+
+### Changed
+- Top-of-script ASCII banner is now a `Proxmarchy` logotype in plain
+  ASCII instead of the previous generic banner.
+
+[0.1.2-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.2-beta
+
 ## [0.1.1-beta] — 2026-08-28
 
 ### Fixed
