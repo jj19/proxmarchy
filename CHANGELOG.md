@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.30-beta] — 2026-08-29
+
+### Fixed
+- **`fix-mac-super-key.sh` failing on a fresh install with
+  `~/.config/hypr/hyprland.conf not found`.** The Hyprland config
+  is only created on the first Hyprland start, so users running
+  the fix from a TTY (or before logging into the Hyprland
+  session for the first time) hit a hard `die`. Replaced the
+  `die` with a "create a minimal config with the swap already
+  in place" path: the script writes a stub `hyprland.conf` with
+  the altwin:swap_alt_win line, exits cleanly, and tells the
+  user to log into Hyprland (or run `Hyprland` from a TTY) for
+  the swap to take effect. When Hyprland starts for the first
+  time, the swap is already in place.
+
+[0.1.30-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.30-beta
+
 ## [0.1.29-beta] — 2026-08-29
 
 ### Added

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+PROXMARCHY_FIX_VERSION="0.1.30-beta"
 # fix-mac-super-key.sh — remap Hyprland's Super modifier so noVNC/SPICE
 #                            pass it through on macOS
 #
@@ -36,6 +37,8 @@
 # and add a "Simple Modification": left_command → left_alt.
 
 set -eEo pipefail
+
+echo "  Proxmarchy fix-mac-super-key.sh ${PROXMARCHY_FIX_VERSION}"
 
 CONF="${HOME}/.config/hypr/hyprland.conf"
 BACKUP_DIR="${HOME}/.config/hypr/backup-super-fix"
@@ -87,7 +90,34 @@ command -v hyprctl >/dev/null 2>&1 || die "hyprctl not found — is Hyprland run
 mkdir -p "$BACKUP_DIR"
 
 if [[ ! -f "$CONF" ]]; then
-  die "$CONF not found. Is Omarchy installed and have you logged into Hyprland at least once?"
+  # No config yet. Most common cause: the user is on a fresh Omarchy
+  # install and hasn't logged into the Hyprland session yet (e.g. they're
+  # in a TTY or a terminal they opened before Hyprland started). We
+  # don't fail here — we create a minimal config with the swap already
+  # in place, and tell the user to log into Hyprland for it to take
+  # effect. When Hyprland starts for the first time, it will see this
+  # config and apply the swap. (If Omarchy later writes a fuller config
+  # via its post-install hook, the swap line will already be in the
+  # `input { }` block by then — re-running this script with --undo and
+  # then again without will reconcile if needed.)
+  note "$CONF does not exist yet — creating a minimal one with the altwin swap."
+  mkdir -p "$(dirname "$CONF")"
+  cat > "$CONF" <<'EOF'
+# Minimal Hyprland config — created by proxmarchy/fix-mac-super-key.sh
+# because no config existed when the fix was run. Omarchy's installer
+# may overwrite or merge with this on first Hyprland start; the
+# kb_options line below is idempotent and safe to keep.
+
+input {
+    kb_layout = us
+    kb_options = altwin:swap_alt_win
+}
+EOF
+  ok "Created $CONF with kb_options = altwin:swap_alt_win"
+  note "Log into the Hyprland session (or run 'Hyprland' from a TTY) for the swap to take effect."
+  note "After that, Alt+Space will open the Omarchy menu. Re-run this script later to"
+  note "make sure the swap is in the real config Omarchy wrote."
+  exit 0
 fi
 
 # ----------------------------------------------------------------------------
