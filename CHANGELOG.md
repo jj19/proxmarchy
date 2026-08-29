@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.16-beta] — 2026-08-28
+
+### Changed
+- **README: lead the "one-liner (Proxmox host)" section with the
+  GitHub API one-liner**, not the `raw.githubusercontent.com` one.
+  The raw CDN has been observed to serve stale blobs (the
+  `?nocache=$(date +%s)` query-string trick only works for HTTP
+  layers that honor query strings; the raw CDN keys on path
+  alone). The GitHub API one-liner uses `curl` + `python3` (both
+  stock on a Proxmox host) and goes around the CDN entirely. The
+  raw one-liner stays documented as a "steady state" fallback.
+
+[0.1.16-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.16-beta
+
 ## [0.1.15-beta] — 2026-08-28
 
 ### Added

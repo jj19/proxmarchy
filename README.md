@@ -24,22 +24,37 @@ This is a public beta line. Issues and PRs welcome.
 
 ## The one-liner (Proxmox host)
 
+**Recommended — bypasses any HTTP proxy / `raw.githubusercontent.com` CDN cache** by using the GitHub API directly (works on a stock Proxmox host, no `gh` needed):
+
+```bash
+# 1. Save the latest script to /tmp/omarchy-vm.sh (uses GitHub API, not the raw CDN)
+curl -fsSL "https://api.github.com/repos/jj19/proxmarchy/contents/omarchy-vm.sh" \
+  | python3 -c 'import json,sys,base64; sys.stdout.write(base64.b64decode(json.load(sys.stdin)["content"]).decode())' \
+  > /tmp/omarchy-vm.sh
+
+# 2. Verify you're on the latest (should print '0.1.15-beta')
+grep -m 1 PROXMARCHY_VERSION /tmp/omarchy-vm.sh
+
+# 3. Run it
+bash /tmp/omarchy-vm.sh
+```
+
+**Steady-state — the shorter one-liner for when `raw.githubusercontent.com` is fresh:**
+
 ```bash
 bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/jj19/proxmarchy/main/omarchy-vm.sh?nocache='$(date +%s))"
 ```
 
-The `?nocache=$(date +%s)` query string is a cache-buster — it forces a
-fresh fetch of the script from GitHub, so any local HTTP proxy or DNS
-caching layer can't serve you a stale version.
+The first line of output should always be:
 
-If you'd rather download to a file and inspect before running:
-
-```bash
-URL="https://raw.githubusercontent.com/jj19/proxmarchy/main/omarchy-vm.sh?nocache=$(date +%s)"
-curl -fsSL "$URL" -o /tmp/omarchy-vm.sh
-less /tmp/omarchy-vm.sh
-bash /tmp/omarchy-vm.sh
 ```
+Proxmarchy omarchy-vm.sh v0.1.15-beta  (commit: <short SHA>)
+```
+
+If it says v0.1.14-beta or earlier, the `raw.githubusercontent.com` CDN is
+caching a stale copy — fall back to the API one-liner above (which
+serves the freshest commit directly from the GitHub API and bypasses
+the CDN entirely).
 
 Run from the **Proxmox node shell** (Datacenter → Node → Shell), as root,
 on Proxmox VE 8.x or 9.x. The script will:
