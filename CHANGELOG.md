@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.19-beta] — 2026-08-28
+
+### Fixed
+- **`PROXMARCHY_VERSION` constant was stuck at `0.1.15-beta`** even
+  in v0.1.18-beta. Bumped to `0.1.18-beta` so the version banner
+  reports the correct version. (The actual code in v0.1.18-beta
+  already had the blob fix; only the cosmetic version label was
+  wrong.)
+- **GitHub raw CDN + API both serve stale content** (observed
+  repeatedly during this rapid release cycle: `?nocache=` query
+  strings don't bust the raw CDN cache, and the API also caches
+  for several minutes). New `force-fresh.sh` script that
+  **clones the repo via the Git protocol** (`git clone --depth 1
+  --filter=blob:none --sparse`) and extracts just `omarchy-vm.sh`.
+  The Git protocol doesn't go through any HTTP cache layer, so
+  the result is the absolute-latest content of `omarchy-vm.sh`
+  on `main`, every time. Falls back to the GitHub API, then the
+  raw CDN, in order. README now points at this as the most
+  reliable one-liner.
+
+[0.1.19-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.19-beta
+
 ## [0.1.18-beta] — 2026-08-28
 
 ### Fixed

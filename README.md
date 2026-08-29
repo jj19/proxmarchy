@@ -24,22 +24,37 @@ This is a public beta line. Issues and PRs welcome.
 
 ## The one-liner (Proxmox host)
 
-**Recommended — bypasses any HTTP proxy / `raw.githubusercontent.com` CDN cache** by using the GitHub API directly (works on a stock Proxmox host, no `gh` needed):
+**Most reliable — `force-fresh.sh` clones the repo via the Git protocol** (no HTTP cache, no API, no CDN in the way):
 
 ```bash
-# 1. Save the latest script to /tmp/omarchy-vm.sh (uses GitHub API, not the raw CDN)
-curl -fsSL "https://api.github.com/repos/jj19/proxmarchy/contents/omarchy-vm.sh" \
-  | python3 -c 'import json,sys,base64; sys.stdout.write(base64.b64decode(json.load(sys.stdin)["content"]).decode())' \
-  > /tmp/omarchy-vm.sh
+# 1. Save the absolute-latest omarchy-vm.sh to /tmp/omarchy-vm.sh
+bash <(curl -fsSL https://raw.githubusercontent.com/jj19/proxmarchy/main/force-fresh.sh)
 
-# 2. Verify you're on the latest (should print '0.1.15-beta')
+# 2. Verify you're on the latest
 grep -m 1 PROXMARCHY_VERSION /tmp/omarchy-vm.sh
 
 # 3. Run it
 bash /tmp/omarchy-vm.sh
 ```
 
-**Steady-state — the shorter one-liner for when `raw.githubusercontent.com` is fresh:**
+`force-fresh.sh` itself uses `git clone --depth 1 --filter=blob:none
+--sparse` (saves bandwidth — only the one file is fetched) so the
+result is guaranteed to be the freshest content of `omarchy-vm.sh`
+on `main`, no matter what any HTTP cache in your path thinks. Falls
+back to the GitHub API, then the raw CDN, in order.
+
+**API one-liner (no `gh` needed, works on a stock Proxmox host)** — when
+the `force-fresh.sh` URL above is itself being cached:
+
+```bash
+curl -fsSL "https://api.github.com/repos/jj19/proxmarchy/contents/omarchy-vm.sh" \
+  | python3 -c 'import json,sys,base64; sys.stdout.write(base64.b64decode(json.load(sys.stdin)["content"]).decode())' \
+  > /tmp/omarchy-vm.sh
+grep -m 1 PROXMARCHY_VERSION /tmp/omarchy-vm.sh
+bash /tmp/omarchy-vm.sh
+```
+
+**Steady-state (when everything is cached fresh)**:
 
 ```bash
 bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/jj19/proxmarchy/main/omarchy-vm.sh?nocache='$(date +%s))"
@@ -48,13 +63,11 @@ bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/jj19/proxmarchy/main/om
 The first line of output should always be:
 
 ```
-Proxmarchy omarchy-vm.sh v0.1.15-beta  (commit: <short SHA>)
+Proxmarchy omarchy-vm.sh v0.X.Y-beta  (commit: <short SHA>)
 ```
 
-If it says v0.1.14-beta or earlier, the `raw.githubusercontent.com` CDN is
-caching a stale copy — fall back to the API one-liner above (which
-serves the freshest commit directly from the GitHub API and bypasses
-the CDN entirely).
+If the version doesn't match what the latest release notes say, use
+the `force-fresh.sh` one-liner — it bypasses every cache.
 
 Run from the **Proxmox node shell** (Datacenter → Node → Shell), as root,
 on Proxmox VE 8.x or 9.x. The script will:
@@ -272,6 +285,7 @@ omarchy/
 ├── omarchy-vm.sh          # Proxmox-host one-liner (this is the main one)
 ├── omarchy-in-vm.sh       # in-VM one-liner (Arch → Omarchy)
 ├── fix-mac-super-key.sh   # in-VM one-liner: remap Super → Alt for noVNC on macOS
+├── force-fresh.sh         # Proxmox-host: bypasses all HTTP caches via git clone
 ├── README.md              # this file
 ├── LICENSE                # MIT
 ├── CHANGELOG.md           # per-version notes
