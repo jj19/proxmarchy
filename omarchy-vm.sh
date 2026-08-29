@@ -27,7 +27,7 @@ set -eEo pipefail
 #   bash -c "$(curl -fsSL '.../omarchy-vm.sh?nocache='$(date +%s))"
 # The first line of the script's runtime output should always be:
 #   "Proxmarchy omarchy-vm.sh v0.X.Y-beta  (commit: <short SHA>)"
-PROXMARCHY_VERSION="0.1.27-beta"
+PROXMARCHY_VERSION="0.1.28-beta"
 PROXMARCHY_GIT_SHA="${PROXMARCHY_GIT_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 echo "Proxmarchy omarchy-vm.sh ${PROXMARCHY_VERSION}  (commit: ${PROXMARCHY_GIT_SHA})"
 
@@ -769,9 +769,17 @@ create_vm() {
   #   and the VM never tries ide2, so the ISO installer never boots.
   #   Putting the ISO first is what community-scripts does and it's
   #   the only reliable way to get a first-boot into the installer on
-  #   OVMF. After install, the user detaches ide2 (see the "Cleanup
-  #   after install" block in next-steps) and the firmware falls
-  #   through to scsi0.
+  #   OVMF.
+  #
+  #   SIDE EFFECT: the Omarchy install wizard reboots the VM when
+  #   it's done. With `order=ide2;scsi0`, the firmware still tries
+  #   ide2 first on the post-install reboot, finds the ISO still
+  #   attached, and re-runs the installer. The user has to break
+  #   this loop manually after install — the "STOP THE INSTALL LOOP"
+  #   one-liner in next-steps does that in a single command. We
+  #   don't auto-detach because we have no way to know when install
+  #   finishes (the wizard doesn't write a marker we can probe from
+  #   the host, and the QEMU guest agent isn't running).
   qm set "$VMID" -boot "order=ide2;scsi0" >/dev/null
 
   msg_ok "Created Omarchy VM ${BL}(${HN})${CL}"
@@ -893,8 +901,8 @@ main() {
   echo -e "  • Open the Proxmox console for VM ${BOLD}${VMID}${CL} (noVNC or xterm.js)."
   echo -e "  • The VM boots from the Omarchy ISO — walk through the wizard in the"
   echo -e "    console: keyboard → user → disk → confirm. Installation finishes in"
-  echo -e "    a few minutes; on the next reboot the VM boots from disk into the"
-  echo -e "    Hyprland desktop."
+  echo -e "    a few minutes. ${BOLD}Then the VM reboots, and the boot order (ISO first)"
+  echo -e "    makes the installer run again.${CL} That's the section right below."
   if [[ "$MAC_USER" == "yes" ]]; then
     echo -e "  ${YW}│${CL}  ${BOLD}macOS noVNC + Super key fix${CL}"
     echo -e "  ${YW}│${CL}  The browser noVNC client on macOS often loses the Super/Cmd key, which"
@@ -912,8 +920,7 @@ main() {
     echo -e "  ${YW}│${CL}  After it runs, ${YW}Alt+Space${CL} opens the Omarchy menu and every other"
     echo -e "  ${YW}│${CL}  Super+X keybind re-maps to Alt+X. Re-run with ${YW}--undo${CL} to revert."
     echo -e "  ${YW}│${CL}"
-    echo -e "  ${YW}│${CL}  If for some reason the data CD-ROM is gone (e.g. you ran cleanup),"
-    echo -e "  ${YW}│${CL}  fetch it from GitHub instead — long, but typeable:"
+    echo -e "  ${YW}│${CL}  If for some reason the data CD-ROM is gone, fetch it from GitHub instead:"
     echo -e "  ${YW}│${CL}"
     echo -e "  ${YW}│${CL}      ${BL}bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/fix-mac-super-key.sh)\"${CL}"
   fi
@@ -924,10 +931,26 @@ main() {
   echo -e "    Omarchy pacman mirror — so the in-VM ${YW}omarchy update${CL}${BOLD} IS the way to"
   echo -e "    stay on the latest Omarchy release, not just the latest Arch packages.${CL}"
   echo
-  echo -e "${INFO}${BOLD}Cleanup after install (manual, when you're done)${CL}"
-  echo -e "  When the install is finished AND you've run the mac-fix (if applicable),"
-  echo -e "  you can free disk space and tidy the VM config with:"
-  echo -e "      ${YW}qm set ${VMID} -delete ide2${CL}    # detach the Omarchy ISO (no longer needed)"
+  echo -e "${RD}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${CL}"
+  echo -e "${RD}${BOLD}  STOP THE INSTALL LOOP — run this on the Proxmox host after install${CL}"
+  echo -e "${RD}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${CL}"
+  echo -e "  Because the boot order is ${YW}ide2;scsi0${CL} (ISO first, disk second) and the"
+  echo -e "  Omarchy ISO is still attached to ${YW}ide2${CL}, the VM will keep running the"
+  echo -e "  installer on every reboot. Once the wizard finishes and you're looking at"
+  echo -e "  Hyprland for the first time, open a shell on ${BOLD}${HN}${CL} and run:"
+  echo
+  echo -e "      ${GN}${BOLD}qm stop ${VMID} && qm set ${VMID} -boot order=scsi0 -delete ide2 && qm start ${VMID}${CL}"
+  echo
+  echo -e "  That one line: stops the VM, switches the boot order to disk-first, detaches"
+  echo -e "  the Omarchy ISO, and starts the VM. From then on it boots straight into"
+  echo -e "  the installed Hyprland. If you're on noVNC when the install finishes, just"
+  echo -e "  switch to the Proxmox host terminal and paste that line — the VM is still"
+  echo -e "  running the installer in the background and you won't lose any state."
+  echo -e "${RD}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${CL}"
+  echo
+  echo -e "${INFO}${BOLD}Cleanup after install (manual, optional — only when you're done with the VM)${CL}"
+  echo -e "  Once you've broken the install loop (above) and run the mac-fix (if applicable),"
+  echo -e "  you can free disk space with:"
   if [[ "$MAC_USER" == "yes" ]]; then
     echo -e "      ${YW}qm set ${VMID} -delete ide3${CL}    # detach the mac-fix data ISO"
   fi

@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.28-beta] — 2026-08-29
+
+### Fixed
+- **Install wizard re-launching on every reboot after install**
+  (the user-facing symptom of the v0.1.27-beta boot-order fix).
+  Putting ide2 first in the boot order was the right call for the
+  *first* boot (so the installer runs at all on a fresh VM with
+  an empty disk), but it also means the post-install reboot
+  re-runs the wizard, because the ISO is still attached.
+
+  No way to auto-detect "install is done" from the host (the
+  wizard doesn't write a marker we can probe, and the QEMU
+  guest agent isn't running), so the user has to break the loop
+  manually. The fix is in the messaging: a prominent red
+  "STOP THE INSTALL LOOP" banner in next-steps, with a single
+  one-liner that stops the VM, switches the boot order to
+  disk-first, detaches ide2, and starts the VM:
+
+      qm stop <vmid> && qm set <vmid> -boot order=scsi0 -delete ide2 && qm start <vmid>
+
+  The user pastes that on the Proxmox host once the Hyprland
+  desktop is up, and from then on the VM boots straight into
+  the installed OS. The "Cleanup after install" section was
+  also demoted to a sub-block under it (the loop-breaker is
+  the important part; freeing the 6 GB ISO is optional).
+
+  The boot-order source comment in `create_vm` also got a
+  "SIDE EFFECT" paragraph explaining the loop so the next
+  person reading the code understands why we don't just
+  auto-detach the ISO.
+
+[0.1.28-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.28-beta
+
 ## [0.1.27-beta] — 2026-08-29
 
 ### Fixed
