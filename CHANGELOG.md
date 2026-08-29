@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.15-beta] — 2026-08-28
+
+### Added
+- **Version banner at the top of `omarchy-vm.sh`.** The very
+  first runtime output is now `Proxmarchy omarchy-vm.sh
+  v0.X.Y-beta  (commit: <short SHA>)`. This makes it easy to tell
+  at a glance whether you're running the latest code or a
+  cached/stale copy. If the version is wrong, you need to bust
+  your curl cache (the `?nocache=$(date +%s)` trick) — some
+  HTTP proxies ignore the query string and key only on the
+  path, so a strongly random suffix (e.g. `?cb=$RANDOM-$RANDOM`)
+  is sometimes needed.
+
+  Also shipped a `PROXMARCHY_GIT_SHA` env-var hook so anyone
+  running the script from a local checkout (or a mirror) can
+  override the reported SHA.
+
+[0.1.15-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.15-beta
+
 ## [0.1.14-beta] — 2026-08-28
 
 ### Fixed

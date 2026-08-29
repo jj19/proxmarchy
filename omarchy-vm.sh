@@ -20,6 +20,17 @@
 # License: MIT
 set -eEo pipefail
 
+# Version banner — printed FIRST so anyone running a cached or stale copy
+# can tell at a glance whether they're on the latest. If you see an old
+# version here, bust your cache (and the curl command) by appending a
+# unique query string:
+#   bash -c "$(curl -fsSL '.../omarchy-vm.sh?nocache='$(date +%s))"
+# The first line of the script's runtime output should always be:
+#   "Proxmarchy omarchy-vm.sh v0.X.Y-beta  (commit: <short SHA>)"
+PROXMARCHY_VERSION="0.1.14-beta"
+PROXMARCHY_GIT_SHA="${PROXMARCHY_GIT_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
+echo "Proxmarchy omarchy-vm.sh ${PROXMARCHY_VERSION}  (commit: ${PROXMARCHY_GIT_SHA})"
+
 # (REPO_OWNER / REPO_NAME / REPO_RAW_BASE are declared further below near
 # the other URL constants — keep the comment block above short so the
 # script's own usage line shows up first.)
