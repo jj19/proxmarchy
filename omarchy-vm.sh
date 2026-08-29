@@ -828,7 +828,7 @@ main() {
   echo -e "      ${YW}omarchy update${CL}                  (terminal)"
   echo -e "      ${YW}Super + Alt + Space → Update → Omarchy${CL}  (menu)"
   echo -e "  • ${BOLD}That update flow pulls from${CL} ${BL}${OMARCHY_REPO}${CL} ${BOLD}and from the"
-  echo -e "    Omarchy pacman mirror — so the in-VM `omarchy update` IS the way to"
+  echo -e "    Omarchy pacman mirror — so the in-VM ${YW}omarchy update${CL}${BOLD} IS the way to"
   echo -e "    stay on the latest Omarchy release, not just the latest Arch packages.${CL}"
   echo
 }

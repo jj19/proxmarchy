@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3-beta] — 2026-08-28
+
+### Fixed
+- **Backtick command substitution in the post-install "next steps" output.**
+  One of the final `echo -e` lines in the script wrapped `omarchy update`
+  in literal backticks (`` `omarchy update` ``) inside a double-quoted
+  string, so bash tried to run `omarchy update` on the Proxmox host
+  itself (where it doesn't exist). That surfaced as a confusing
+  `omarchy: command not found` + `exit 127` at the very end of a
+  otherwise-successful run. The line now uses the same
+  `${YW}omarchy update${CL}` variable-coloring pattern as the other
+  lines, so it's printed as text and never executed. No other backticks
+  in double-quoted strings remain (verified by grep).
+
+[0.1.3-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.3-beta
+
 ## [0.1.2-beta] — 2026-08-28
 
 ### Fixed
