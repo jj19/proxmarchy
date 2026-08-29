@@ -27,7 +27,7 @@ set -eEo pipefail
 #   bash -c "$(curl -fsSL '.../omarchy-vm.sh?nocache='$(date +%s))"
 # The first line of the script's runtime output should always be:
 #   "Proxmarchy omarchy-vm.sh v0.X.Y-beta  (commit: <short SHA>)"
-PROXMARCHY_VERSION="0.1.24-beta"
+PROXMARCHY_VERSION="0.1.25-beta"
 PROXMARCHY_GIT_SHA="${PROXMARCHY_GIT_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 echo "Proxmarchy omarchy-vm.sh ${PROXMARCHY_VERSION}  (commit: ${PROXMARCHY_GIT_SHA})"
 
@@ -692,72 +692,28 @@ create_vm() {
   qm set "$VMID" -efidisk0 "${DISK_STORAGE}:0,efitype=4m,pre-enrolled-keys=0" >/dev/null
 
   # ── Display ────────────────────────────────────────────────────────────
-  # Modern split (PVE 8.1+): kill the legacy VGA emulated display and use a
-  # dedicated virtio-gpu with proper VRAM and host-side 3D acceleration.
-  # This is what unblocks smooth Hyprland / Wayland rendering (the legacy
-  # `-vga virtio,memory=64` is 2D-only and software-renders most things).
+  # Use Proxmox's first-class `-vga virtio` option. This:
+  #   - Creates a virtio-gpu device (Hyprland's preferred display type)
+  #   - Allocates 512 MiB of VRAM (generous; Hyprland likes lots of VRAM)
+  #   - Sets up the VNC display backend automatically — no need to
+  #     fight the `-vga none` → `display: none` side-effect we hit
+  #     on v0.1.18 through v0.1.24
+  #   - Works on all modern Proxmox versions (the option has been
+  #     first-class since PVE 7.x)
   #
-  # We use `-args` to pass the QEMU flags directly instead of the newer
-  # `qm set -display none` / `qm set -gpu virtio,accel=hw` flags because the
-  # latter are missing from some Proxmox API schemas / `pve-qemu-kvm`
-  # package versions and the API rejects them with `Unknown option:
-  # display` + `400 unable to parse option`. Raw `-args` works on every
-  # Proxmox version and is what the Proxmox web UI does under the hood
-  # for the same settings.
-  #
-  # IMPORTANT: `-vga none` also sets the VM's `display:` config property
-  # to `none` (no VGA → no display backend), which kills the VNC server
-  # Proxmox would otherwise start for noVNC. We have to explicitly
-  # re-set the display on the next line. The order matters:
-  # -vga none first, then -display.
-  #
-  # Valid values for `-display` vary by Proxmox version:
-  #   - PVE 8.x:   vnc | spice | none
-  #   - PVE 9.x:   default | virtio
-  # `vnc` is rejected on 9.1.4 with
-  #   "display should be default or virtio".
-  # `default` = use the host's default display backend (VNC for
-  #   Proxmox's qemu-server, which is what noVNC connects to).
-  # `virtio`  = the virtio-gpu IS the display (no VNC, the GPU is the
-  #   only display target) — not what we want.
-  qm set "$VMID" -vga none >/dev/null
-  qm set "$VMID" -display default >/dev/null
+  # We intentionally do NOT pass 3D flags (blob=true, venus=true) —
+  # see CHANGELOG v0.1.17 / v0.1.18 for why and how to opt back in
+  # (modprobe udmabuf on the host, then re-add ,blob=true manually).
+  qm set "$VMID" -vga virtio,memory=512 >/dev/null
 
   # Serial console (handy for Proxmox xterm.js / debugging)
   qm set "$VMID" -serial0 socket >/dev/null
 
-  # ── Display + sound (combined QEMU -args) ─────────────────────────────
-  # All raw QEMU args go in a single -args call (subsequent -args calls
-  # overwrite the previous one). Includes:
-  #   -display none                         — kill the default emulated display
-  #   -device virtio-gpu,blob=true,...      — proper 3D-accelerated GPU
-  #   -device ich9-intel-hda + -duplex      — Intel HDA sound for PipeWire
-  # Note on virtio-gpu properties:
-  #   - max_outputs=1 : standard, always supported (QEMU 5.2+)
-  #   - blob=true     : QEMU 7.1+ — older 3D resource path. Needs the host
-  #                     kernel module `udmabuf` (modprobe udmabuf) OR the
-  #                     userland `rutabaga` daemon running. Without
-  #                     one of those, QEMU errors with
-  #                     "need rutabaga or udmabuf for blob resources".
-  #   - venus=true    : QEMU 9.0+ — newer Vulkan passthrough. Needs a
-  #                     newer QEMU than some Proxmox 9.x builds ship.
-  # We use plain `virtio-gpu,max_outputs=1` (no 3D flags) so the
-  # script works on any Proxmox host. The result is a 2D-accelerated
-  # virtio-gpu display — fine for Hyprland; the compositor
-  # software-renders or uses llvmpipe, no GPU acceleration.
-  # To opt back into 3D, run on the Proxmox host:
-  #     modprobe udmabuf
-  #     qm stop <vmid>
-  #     qm set <vmid> -args '-device virtio-gpu,blob=true,max_outputs=1 ...'
-  #     qm start <vmid>
-  # (For Vulkan passthrough, additionally add ,venus=true and
-  #  ensure your QEMU is ≥ 9.0.)
-  # Note: do NOT pass `-display none` here. Proxmox's qemu-server
-  # parses the args string and reflects `-display ...` into the VM
-  # config's `display:` property. Setting `display: none` kills the
-  # VNC server the Proxmox wrapper would otherwise start, and noVNC
-  # then can't connect. Proxmox picks the right display backend
-  # itself based on the VM config — just leave it alone.
+  # ── Sound via QEMU args (HDA isn't a first-class Proxmox option) ────
+  # The args string ONLY contains sound + audio-backend now. The GPU
+  # device is handled by `-vga virtio` above; we no longer need to
+  # add `-device virtio-gpu,max_outputs=1` here.
+  #
   # Note on the HDA args:
   #   -audio driver=none                       — tell QEMU which audio
   #     backend to use for any hda-* device on the host. `none` means
@@ -776,7 +732,12 @@ create_vm() {
   #     `hda-duplex` (NOT `intel-hda-duplex` — that's wrong and QEMU
   #     errors with "'intel-hda-duplex' is not a valid device model
   #     name" on qm start).
-  qm set "$VMID" -args "-audio driver=none -device virtio-gpu,max_outputs=1 -device ich9-intel-hda,id=sound0,bus=pci.0,addr=0x18 -device hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0" >/dev/null
+  #
+  # DO NOT add `-display none` here — it would kill the VNC server
+  # the Proxmox wrapper sets up. (We hit this exact bug in v0.1.21
+  # through v0.1.24; the fix is to use `-vga virtio` for the display
+  # and let Proxmox manage the display backend.)
+  qm set "$VMID" -args "-audio driver=none -device ich9-intel-hda,id=sound0,bus=pci.0,addr=0x18 -device hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0" >/dev/null
 
   # ── Performance ────────────────────────────────────────────────────────
   # Disable memory ballooning. The default balloon device causes memory

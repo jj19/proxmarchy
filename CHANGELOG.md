@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.25-beta] — 2026-08-29
+
+### Changed
+- **Replaced the `-vga none` + custom `-device virtio-gpu` in args
+  approach with Proxmox's first-class `-vga virtio,memory=512`.**
+  This is the supported syntax for adding a virtio-gpu on PVE 7+
+  and it sidesteps the whole `-vga none` → `display: none` side-
+  effect that's been biting us since v0.1.18. Proxmox's qemu-server
+  also sets up the VNC display backend automatically when the VGA
+  is something other than `none`, so noVNC just works.
+
+  The args string is now sound-only (HDA controller + codec +
+  `-audio driver=none`); the GPU device is no longer duplicated in
+  args.
+
+### Fixed
+- **Real fix for `noVNC failed to connect to server` on PVE 9.x.**
+  v0.1.22 through v0.1.24 were whack-a-mole attempts at working
+  around the `-vga none` side-effect (`-display none` removed from
+  args in v0.1.22, then `-display vnc` added in v0.1.23, then
+  `-display default` in v0.1.24 — the last of which is itself
+  rejected on 9.1.4, so the whole approach was a dead end). The
+  clean fix is to stop fighting Proxmox's display model and just
+  use `-vga virtio` for the GPU.
+
+[0.1.25-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.25-beta
+
 ## [0.1.24-beta] — 2026-08-29
 
 ### Fixed
