@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.10-beta] — 2026-08-28
+
+### Changed
+- **Display: modern split for Hyprland performance.** Replaced
+  the legacy `-vga virtio,memory=64` (2D-only, 64 MB VRAM,
+  software-rendered) with the PVE 8.1+ split form:
+  `-display none` + `-gpu virtio,memory=512,accel=hw`. Gives
+  Hyprland / Wayland a real 3D-accelerated display with 512 MB
+  of VRAM and host-side acceleration, instead of software-rasterizing
+  every frame.
+- **Sound: Intel HDA via QEMU args.** Added
+  `-device ich9-intel-hda -device intel-hda-duplex`. PipeWire
+  in Omarchy auto-detects it; `pactl list sinks short` shows it
+  immediately. Audible over SPICE (Linux `virt-viewer` / Windows
+  MSI); not audible over noVNC (browser VNC has no audio
+  channel).
+- **Performance: disable memory ballooning.** Added
+  `-balloon 0` so Proxmox doesn't reclaim RAM out from under the
+  VM. Default 8 GiB is then strictly pinned, which avoids the
+  latency spikes the default balloon device causes.
+- README: updated the "Tested reference settings (manual)"
+  recipe to match the new defaults, and added a "Performance
+  + sound rationale" subsection explaining each knob.
+
+[0.1.10-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.10-beta
+
 ## [0.1.9-beta] — 2026-08-28
 
 ### Added

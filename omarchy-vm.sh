@@ -603,10 +603,32 @@ create_vm() {
   # EFI disk (no Secure Boot pre-enrolled keys — Hyprland/limine path)
   qm set "$VMID" -efidisk0 "${DISK_STORAGE}:0,efitype=4m,pre-enrolled-keys=0" >/dev/null
 
-  # VirtIO-GPU is the recommended Wayland display for Hyprland on Proxmox
-  qm set "$VMID" -vga virtio,memory=64 >/dev/null
-  # Serial console (handy for Proxmox xterm.js)
+  # ── Display ────────────────────────────────────────────────────────────
+  # Modern split (PVE 8.1+): kill the legacy VGA emulated display and use a
+  # dedicated virtio-gpu with proper VRAM and host-side 3D acceleration.
+  # This is what unblocks smooth Hyprland / Wayland rendering (the legacy
+  # `-vga virtio,memory=64` is 2D-only and software-renders most things).
+  qm set "$VMID" -display none >/dev/null
+  qm set "$VMID" -gpu virtio,memory=512,accel=hw >/dev/null
+
+  # Serial console (handy for Proxmox xterm.js / debugging)
   qm set "$VMID" -serial0 socket >/dev/null
+
+  # ── Sound ───────────────────────────────────────────────────────────────
+  # Intel HDA on the ICH9 bus. PipeWire / WirePlumber in Omarchy auto-detect
+  # it as an ALSA sink/source. NOTE: noVNC doesn't carry audio, so this is
+  # only audible over a SPICE console (Linux virt-viewer / Windows). Mac
+  # users on noVNC will see the device in `pactl list sinks short` but
+  # nothing will play in the browser — pipe it over SSH / PulseAudio's
+  # network sink if you actually need to hear it from macOS.
+  qm set "$VMID" -args "-device ich9-intel-hda,id=sound0,bus=pci.0,addr=0x18 -device intel-hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0" >/dev/null
+
+  # ── Performance ────────────────────────────────────────────────────────
+  # Disable memory ballooning. The default balloon device causes memory
+  # pressure and latency spikes as Proxmox reclaims RAM. With the VM sized
+  # for its workload (default 8 GiB) it's strictly better to pin the
+  # allocation.
+  qm set "$VMID" -balloon 0 >/dev/null
 
   # Main OS disk (will be filled by the ISO installer)
   qm set "$VMID" -scsi0 "${DISK_STORAGE}:${VMID},iothread=1,discard=on,ssd=1,size=${DISK_SIZE}G" >/dev/null

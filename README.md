@@ -267,7 +267,11 @@ qm create 101 --name my-omarchy \
   --ostype l26 --scsihw virtio-scsi-single \
   --efidisk0 local-lvm:0,efitype=4m,pre-enrolled-keys=0 \
   --scsi0 local-lvm:100,discard=on,iothread=1 \
-  --net0 virtio,bridge=vmbr0 --vga virtio --serial0 socket \
+  --net0 virtio,bridge=vmbr0 \
+  --display none --gpu virtio,memory=512,accel=hw \
+  --serial0 socket \
+  --balloon 0 \
+  --args '-device ich9-intel-hda,id=sound0,bus=pci.0,addr=0x18 -device intel-hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0' \
   --ide2 local:iso/omarchy.iso,media=cdrom \
   --boot order='scsi0;ide2'
 qm start 101
@@ -275,3 +279,34 @@ qm start 101
 
 (The script automates exactly this, plus the ISO download and the
 `omarchy.org`-driven update story.)
+
+### Performance + sound rationale
+
+The defaults the script picks are tuned for a snappy Hyprland
+desktop — not for "minimum viable VM":
+
+- **`-display none --gpu virtio,memory=512,accel=hw`** (PVE 8.1+):
+  the modern split. Kills the legacy VGA emulated display and
+  exposes a dedicated virtio-gpu with 512 MB of VRAM and
+  **host-side 3D acceleration**. This is what unblocks smooth
+  Hyprland / Wayland rendering — the legacy `--vga virtio` (the
+  `-memory 64` variant in particular) is 2D-only and
+  software-renders most things, so animations and shadows lag.
+- **`-balloon 0`**: disable the memory ballooning device. The
+  default balloon causes memory pressure and latency spikes as
+  Proxmox reclaims RAM. With the VM sized for its workload
+  (default 8 GiB), pinning the allocation is strictly better.
+- **`ich9-intel-hda` + `intel-hda-duplex`**: Intel HDA on the
+  ICH9 bus. PipeWire / WirePlumber in Omarchy auto-detect it as
+  an ALSA sink/source. The user will see it in `pactl list sinks
+  short` and can use any PipeWire-aware app. **Note**: audio is
+  not carried over noVNC (browser VNC has no audio channel), so
+  it's only audible over a SPICE console (Linux `virt-viewer` /
+  Windows). For Mac users on noVNC, the device is configured but
+  inaudible in the browser — pipe it over SSH/PulseAudio's
+  network sink if you actually need to hear it from macOS.
+- **`-cpu host`**: pass through all host CPU features. Needed
+  for `+aes`, `+avx`, `+invtsc`, etc. that Hyprland and modern
+  Firefox both want.
+- **`virtio-scsi-single` + `iothread=1` + `discard=on` + `ssd=1`**:
+  the right combo for fast virtio disk I/O on the OS disk.
