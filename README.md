@@ -115,6 +115,34 @@ desktop. They can then keep the VM current with:
 - `omarchy update` (terminal)
 - **Super + Alt + Space → Update → Omarchy** (menu)
 
+### Console options — what to use when
+
+Proxmox gives you three ways to reach the VM console. They have different
+tradeoffs depending on your platform:
+
+| Console | Best for | Gotchas |
+|---|---|---|
+| **noVNC** (browser) | Everything on the install wizard, occasional GUI access | The **Super / Cmd / Win key is often eaten by the browser or the OS** before it reaches the VM. `Super + Space` and `Super + Enter` may not fire. Workaround: remap Super → Right Alt or Caps Lock in `~/.config/hypr/hyprland.conf`. |
+| **xterm.js** (browser, serial) | Text-mode work, debugging, when the framebuffer hangs. Connects to the VM's `serial0` socket. | Boot messages and the Omarchy install wizard render on the framebuffer, **not** serial, by default — so the install wizard shows nothing on this console unless the kernel is told to use serial too (`-args "-console=ttyS0,115200"` in the VM config). Useful for post-install TTYs once configured. |
+| **SPICE** (native client) | Best keyboard passthrough — Super, Alt+Tab, media keys all work. | The official macOS Remote Viewer is the ancient 0.5.7 build and **doesn't understand Proxmox's modern `pvespiceproxy:...` ticket format**. Modern virt-viewer 11.0+ has no maintained macOS binary. On Linux it's a one-liner (`apt install virt-viewer`); on Windows it's the official MSI. |
+
+### Recommended workflow
+
+- **Linux / Windows desktop user**: install `virt-viewer` and use SPICE
+  for everything. Best keyboard, no fuss.
+- **macOS user (pragmatic)**: use noVNC for the install wizard, then
+  **SSH into the VM** for everything post-install:
+  ```bash
+  ssh omarchy@<vm-ip>
+  ```
+  Find the VM's IP from the Proxmox UI (VM → Summary) or run
+  `ip -4 addr show` from the noVNC console once the VM is on the
+  network. SSH gives you a real terminal, full keyboard, copy/paste —
+  better than fighting noVNC for most things. When you really need
+  the Hyprland desktop, drop into noVNC and remap Super to Right Alt
+  or Caps Lock in `~/.config/hypr/hyprland.conf` (the Omarchy menu's
+  "Show keybinds" cheat sheet will tell you what's bound to what).
+
 ---
 
 ## The other one-liner (in-VM, plain Arch → Omarchy)

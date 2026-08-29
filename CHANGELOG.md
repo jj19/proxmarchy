@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7-beta] — 2026-08-28
+
+### Changed
+- **README: added a "Console options" section.** Documents the
+  noVNC / xterm.js / SPICE tradeoff table and a recommended
+  workflow per platform. Highlights that there is no good modern
+  macOS Remote Viewer (the official 0.5.7 build doesn't understand
+  Proxmox's modern `pvespiceproxy:...` ticket format, and the
+  upstream virt-viewer 11.0+ ships Windows-only MSI). For macOS
+  users, the recommended path is noVNC for the install + SSH for
+  post-install management; the Omarchy menu's "Show keybinds"
+  cheat sheet explains what to remap if you need Super-based
+  shortcuts in noVNC.
+
+[0.1.7-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.7-beta
+
 ## [0.1.6-beta] — 2026-08-28
 
 ### Changed
