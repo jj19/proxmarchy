@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.24-beta] — 2026-08-29
+
+### Fixed
+- **`qm set ... -display vnc` rejected with "display should be
+  default or virtio" on PVE 9.1.4.** The `display` property in
+  Proxmox 9.x only accepts `default` or `virtio`; the legacy `vnc`
+  / `spice` / `none` values that PVE 8.x accepted were renamed.
+  `default` = the host's default display backend (VNC for
+  Proxmox's qemu-server — what noVNC connects to). `virtio` = the
+  virtio-gpu IS the display (no VNC, the GPU is the only display
+  target) — not what we want for a noVNC workflow. Changed
+  `-display vnc` to `-display default`. Source comment updated
+  to call out the version-dependent value list.
+
+[0.1.24-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.24-beta
+
 ## [0.1.23-beta] — 2026-08-29
 
 ### Fixed

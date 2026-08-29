@@ -27,7 +27,7 @@ set -eEo pipefail
 #   bash -c "$(curl -fsSL '.../omarchy-vm.sh?nocache='$(date +%s))"
 # The first line of the script's runtime output should always be:
 #   "Proxmarchy omarchy-vm.sh v0.X.Y-beta  (commit: <short SHA>)"
-PROXMARCHY_VERSION="0.1.23-beta"
+PROXMARCHY_VERSION="0.1.24-beta"
 PROXMARCHY_GIT_SHA="${PROXMARCHY_GIT_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 echo "Proxmarchy omarchy-vm.sh ${PROXMARCHY_VERSION}  (commit: ${PROXMARCHY_GIT_SHA})"
 
@@ -708,10 +708,20 @@ create_vm() {
   # IMPORTANT: `-vga none` also sets the VM's `display:` config property
   # to `none` (no VGA → no display backend), which kills the VNC server
   # Proxmox would otherwise start for noVNC. We have to explicitly
-  # re-set the display to `vnc` on the next line. The order matters:
-  # -vga none first, then -display vnc.
+  # re-set the display on the next line. The order matters:
+  # -vga none first, then -display.
+  #
+  # Valid values for `-display` vary by Proxmox version:
+  #   - PVE 8.x:   vnc | spice | none
+  #   - PVE 9.x:   default | virtio
+  # `vnc` is rejected on 9.1.4 with
+  #   "display should be default or virtio".
+  # `default` = use the host's default display backend (VNC for
+  #   Proxmox's qemu-server, which is what noVNC connects to).
+  # `virtio`  = the virtio-gpu IS the display (no VNC, the GPU is the
+  #   only display target) — not what we want.
   qm set "$VMID" -vga none >/dev/null
-  qm set "$VMID" -display vnc >/dev/null
+  qm set "$VMID" -display default >/dev/null
 
   # Serial console (handy for Proxmox xterm.js / debugging)
   qm set "$VMID" -serial0 socket >/dev/null
