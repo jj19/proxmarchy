@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.18-beta] — 2026-08-28
+
+### Fixed
+- **`need rutabaga or udmabuf for blob resources` on `qm start`.**
+  Even after dropping `venus=true` in v0.1.17-beta, the
+  remaining `blob=true` virtio-gpu property requires either
+  the host kernel module `udmabuf` (or `modprobe udmabuf`)
+  OR the userland `rutabaga` daemon running. On Proxmox
+  hosts that don't have `udmabuf` loaded by default and
+  don't run `rutabaga`, QEMU refuses to start the VM.
+  Dropped `blob=true` entirely; the script now uses plain
+  `virtio-gpu,max_outputs=1` (2D-capable, works on every
+  Proxmox host). Hyprland runs but software-renders. The
+  CHANGELOG/README document how to opt back into 3D by
+  loading `udmabuf` and re-adding `blob=true` manually.
+
+[0.1.18-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.18-beta
+
 ## [0.1.17-beta] — 2026-08-28
 
 ### Fixed

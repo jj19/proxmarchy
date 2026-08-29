@@ -342,3 +342,39 @@ desktop — not for "minimum viable VM":
   Firefox both want.
 - **`virtio-scsi-single` + `iothread=1` + `discard=on` + `ssd=1`**:
   the right combo for fast virtio disk I/O on the OS disk.
+- **`virtio-gpu,max_outputs=1`** (no `blob`/`venus`): the script
+  uses a **2D-only virtio-gpu** so the default works on every
+  Proxmox host regardless of QEMU version or host kernel
+  modules. Hyprland runs and is fully usable, but it
+  software-renders (llvmpipe) for any 3D work (animations,
+  blur, etc.). To opt into 3D acceleration, see the next
+  subsection.
+
+### How to enable 3D acceleration (optional)
+
+The script's default virtio-gpu is 2D-only for maximum
+compatibility. If your Proxmox host is on a recent enough
+QEMU and you want GPU-accelerated Hyprland, opt in manually:
+
+1. **Load the `udmabuf` kernel module on the Proxmox host**
+   (one-time, persists across reboots if you add it to
+   `/etc/modules`):
+   ```bash
+   modprobe udmabuf
+   echo udmabuf >> /etc/modules
+   ```
+2. **Stop the VM, add `blob=true` to the virtio-gpu args, restart**:
+   ```bash
+   qm stop <vmid>
+   qm set <vmid> -args '-display none -device virtio-gpu,blob=true,max_outputs=1 -device ich9-intel-hda,id=sound0,bus=pci.0,addr=0x18 -device intel-hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0'
+   qm start <vmid>
+   ```
+3. **For true Vulkan passthrough** (additionally requires QEMU
+   ≥ 9.0 on the host), add `,venus=true` after `blob=true`:
+   ```
+   -device virtio-gpu,blob=true,venus=true,max_outputs=1
+   ```
+
+After re-adding `blob=true`, Hyprland should pick up the GPU
+acceleration automatically and the laggy software rendering
+goes away.

@@ -716,14 +716,26 @@ create_vm() {
   #   -device virtio-gpu,blob=true,...      — proper 3D-accelerated GPU
   #   -device ich9-intel-hda + -duplex      — Intel HDA sound for PipeWire
   # Note on virtio-gpu properties:
-  #   - blob=true   : QEMU 7.1+ — enables the 3D resource path (older API).
-  #   - venus=true  : QEMU 9.0+ — enables the Vulkan passthrough (newer API).
-  # We stick with `blob` only because `venus` was rejected as
-  # "Property 'virtio-gpu-pci.venus' not found" on some Proxmox 9.x
-  # builds that ship an older QEMU than the package version suggests.
-  # To opt into `venus` for true Vulkan passthrough, run on a host
-  # with QEMU ≥ 9.0 and add `,venus=true` after `blob=true`.
-  qm set "$VMID" -args "-display none -device virtio-gpu,blob=true,max_outputs=1 -device ich9-intel-hda,id=sound0,bus=pci.0,addr=0x18 -device intel-hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0" >/dev/null
+  #   - max_outputs=1 : standard, always supported (QEMU 5.2+)
+  #   - blob=true     : QEMU 7.1+ — older 3D resource path. Needs the host
+  #                     kernel module `udmabuf` (modprobe udmabuf) OR the
+  #                     userland `rutabaga` daemon running. Without
+  #                     one of those, QEMU errors with
+  #                     "need rutabaga or udmabuf for blob resources".
+  #   - venus=true    : QEMU 9.0+ — newer Vulkan passthrough. Needs a
+  #                     newer QEMU than some Proxmox 9.x builds ship.
+  # We use plain `virtio-gpu,max_outputs=1` (no 3D flags) so the
+  # script works on any Proxmox host. The result is a 2D-accelerated
+  # virtio-gpu display — fine for Hyprland; the compositor
+  # software-renders or uses llvmpipe, no GPU acceleration.
+  # To opt back into 3D, run on the Proxmox host:
+  #     modprobe udmabuf
+  #     qm stop <vmid>
+  #     qm set <vmid> -args '-display none -device virtio-gpu,blob=true,max_outputs=1 ...'
+  #     qm start <vmid>
+  # (For Vulkan passthrough, additionally add ,venus=true and
+  #  ensure your QEMU is ≥ 9.0.)
+  qm set "$VMID" -args "-display none -device virtio-gpu,max_outputs=1 -device ich9-intel-hda,id=sound0,bus=pci.0,addr=0x18 -device intel-hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0" >/dev/null
 
   # ── Performance ────────────────────────────────────────────────────────
   # Disable memory ballooning. The default balloon device causes memory
