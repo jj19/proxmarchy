@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.31-beta] — 2026-08-29
+
+### Added
+- **Warning in next-steps: "Don't start Hyprland from a TTY."**
+  Hyprland will start from a TTY but XWayland (which it spawns
+  for X11 apps) will fail with `KMS: DRM_IOCTL_MODE_CREATE_DUMB
+  failed: Permission denied` because TTYs don't have a
+  logind-managed seat. The user is then stuck with a
+  half-working Hyprland session and no X11 support. The fix is
+  to use SDDM (the display manager Omarchy installs) — log in
+  there and Hyprland starts with the right session/permissions.
+  The warning explains the symptom, the cause, and the recovery
+  (enable SDDM, switch to its TTY, log in via the GUI).
+
+[0.1.31-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.31-beta
+
 ## [0.1.30-beta] — 2026-08-29
 
 ### Fixed

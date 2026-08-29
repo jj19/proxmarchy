@@ -27,7 +27,7 @@ set -eEo pipefail
 #   bash -c "$(curl -fsSL '.../omarchy-vm.sh?nocache='$(date +%s))"
 # The first line of the script's runtime output should always be:
 #   "Proxmarchy omarchy-vm.sh v0.X.Y-beta  (commit: <short SHA>)"
-PROXMARCHY_VERSION="0.1.29-beta"
+PROXMARCHY_VERSION="0.1.31-beta"
 PROXMARCHY_GIT_SHA="${PROXMARCHY_GIT_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 echo "Proxmarchy omarchy-vm.sh ${PROXMARCHY_VERSION}  (commit: ${PROXMARCHY_GIT_SHA})"
 
@@ -938,6 +938,17 @@ main() {
   echo -e "  • ${BOLD}That update flow pulls from${CL} ${BL}${OMARCHY_REPO}${CL} ${BOLD}and from the"
   echo -e "    Omarchy pacman mirror — so the in-VM ${YW}omarchy update${CL}${BOLD} IS the way to"
   echo -e "    stay on the latest Omarchy release, not just the latest Arch packages.${CL}"
+  echo
+  echo -e "  ${YW}${BOLD}⚠  Don't start Hyprland from a TTY.${CL} After the post-install reboot, the"
+  echo -e "  ${YW}VM should land on SDDM (the graphical login screen) — log in there. If you"
+  echo -e "  ${YW}end up on a black TTY with a text prompt instead, you can still recover, but"
+  echo -e "  ${YW}DO NOT type \`Hyprland\` directly: Hyprland will start but XWayland (which it"
+  echo -e "  ${YW}spawns for X11 apps) will fail with \`KMS: DRM_IOCTL_MODE_CREATE_DUMB failed:"
+  echo -e "  ${YW}Permission denied\` because TTYs don't have a logind-managed seat, so the X"
+  echo -e "  ${YW}server can't open the GPU. Instead:"
+  echo -e "  ${YW}  1. Make sure SDDM is running: \`sudo systemctl enable --now sddm\`"
+  echo -e "  ${YW}  2. Switch to its TTY: \`Ctrl+Alt+F7\` (or F1/F8 if F7 is blank)"
+  echo -e "  ${YW}  3. Log in via the SDDM GUI. Hyprland starts automatically on success.${CL}"
   echo
   echo -e "${RD}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${CL}"
   echo -e "${RD}${BOLD}  STOP THE INSTALL LOOP — run this on the Proxmox host after install${CL}"
