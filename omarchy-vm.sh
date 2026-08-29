@@ -487,24 +487,7 @@ upload_iso_to_storage() {
   local STORAGE="$3"       # Proxmox storage ID
 
   local ISO_DIR
-  ISO_DIR=$(awk -v st="$STORAGE" '
-    BEGIN { in_storage=0 }
-    {
-      # Storage definition lines look like: "dir: local" or "lvmthin: local-lvm"
-      # The first field is the storage TYPE (with trailing colon), the second
-      # field is the storage ID. Match the type pattern to detect a new
-      # storage block, then read its ID from $2.
-      if ($1 ~ /^[a-zA-Z0-9_.-]+:$/) {
-        current = $2
-        in_storage = (current == st)
-        next
-      }
-      if (in_storage && $1 == "path") {
-        print $2
-        exit
-      }
-    }
-  ' /etc/pve/storage.cfg 2>/dev/null || true)
+  ISO_DIR=$(storage_iso_dir "$STORAGE")
 
   if [[ -n "$ISO_DIR" ]]; then
     mkdir -p "${ISO_DIR}/template/iso"
@@ -521,8 +504,28 @@ upload_iso_to_storage() {
   exit 1
 }
 
+# Resolve the on-disk path of a Proxmox storage's ISO directory.
+# Returns "<path>/template/iso" for dir-backed storages, or empty if the
+# storage has no local filesystem path (LVM-thin / ZFS / Ceph / etc.).
+storage_iso_dir() {
+  local st="$1"
+  local base
+  base=$(awk -v s="$st" '
+    $1 ~ /^[a-zA-Z0-9_.-]+:$/ {
+      current = $2
+      in_storage = (current == s)
+      next
+    }
+    in_storage && $1 == "path" {
+      print $2
+      exit
+    }
+  ' /etc/pve/storage.cfg 2>/dev/null)
+  [[ -n "$base" ]] && echo "${base}/template/iso"
+}
+
 # ----------------------------------------------------------------------------
-# 5. Pull the latest Omarchy ISO (always fresh)
+# 5. Pull the latest Omarchy ISO (always fresh — but reuse if already there)
 # ----------------------------------------------------------------------------
 download_omarchy_iso() {
   msg_info "Fetching the latest Omarchy ISO URL from ${OMARCHY_HOME}"
@@ -543,6 +546,19 @@ download_omarchy_iso() {
   fi
   msg_ok "Latest Omarchy ISO: ${BL}${ISO_URL}${CL}"
   ISO_FILE="$(basename "$ISO_URL")"
+
+  # If the exact same ISO is already in the chosen Proxmox storage, reuse
+  # it instead of re-downloading 6 GB. Catches the "I just ran this 10
+  # minutes ago" case. If a *different* omarchy-*.iso is sitting there
+  # from an older run, the download path below will overwrite it.
+  local ISO_DIR
+  ISO_DIR=$(storage_iso_dir "$STORAGE")
+  if [[ -n "$ISO_DIR" && -f "${ISO_DIR}/${ISO_FILE}" ]]; then
+    local SIZE
+    SIZE=$(du -h "${ISO_DIR}/${ISO_FILE}" | awk '{print $1}')
+    msg_ok "Reusing ${BL}${ISO_FILE}${CL} already in Proxmox storage (${BOLD}${SIZE}${CL}) — skipping download"
+    return 0
+  fi
 
   msg_info "Downloading ${ISO_FILE}"
   if ! curl -f#SL -o "$ISO_FILE" "$ISO_URL"; then
@@ -717,21 +733,8 @@ start_vm() {
 post_install_cleanup() {
   local ISO_DIR ISO_FILE_TO_REMOVE
 
-  # Resolve the same dir-backed path we uploaded to
-  ISO_DIR=$(awk -v st="$STORAGE" '
-    BEGIN { in_storage=0 }
-    {
-      if ($1 ~ /^[a-zA-Z0-9_.-]+:$/) {
-        current = $2
-        in_storage = (current == st)
-        next
-      }
-      if (in_storage && $1 == "path") {
-        print $2
-        exit
-      }
-    }
-  ' /etc/pve/storage.cfg 2>/dev/null || true)
+  # Resolve the same dir-backed path we uploaded to (shared helper)
+  ISO_DIR=$(storage_iso_dir "$STORAGE")
 
   if [[ -z "$ISO_DIR" ]]; then
     msg_info "Skipping ISO cleanup (could not resolve storage path)"

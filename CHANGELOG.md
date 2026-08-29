@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4-beta] — 2026-08-28
+
+### Changed
+- **Reuse the existing Omarchy ISO if it's already in Proxmox storage.**
+  Before this fix, the script always re-downloaded the ~6 GB ISO on
+  every run. It now checks `<storage_path>/template/iso/<exact-filename>`
+  first and skips the download if the same file is already there
+  (saves ~6 GB / 1–3 min per re-run on the same node). If a *different*
+  `omarchy-*.iso` is sitting there from an older run, the new version
+  still downloads and overwrites it.
+- Extracted the duplicated storage-path awk into a shared
+  `storage_iso_dir` helper used by `download_omarchy_iso`,
+  `upload_iso_to_storage`, and `post_install_cleanup` (DRY).
+
+[0.1.4-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.4-beta
+
 ## [0.1.3-beta] — 2026-08-28
 
 ### Fixed
