@@ -80,6 +80,7 @@ on Proxmox VE 8.x or 9.x. The script will:
 | Install mode | **Omarchy wizard** (in the Proxmox console) | no unattended/cidata option — keep it simple |
 | Start when done | yes | |
 | **Remove Omarchy ISO after install** | **yes** | toggleable in Advanced; the ISO is 6 GB, so this saves real space. The VM doesn't need it after install (boot order is `scsi0;ide2`, disk wins). |
+| **End user on macOS?** | **no** | toggleable in Advanced; if "yes", the post-install "Next steps" output includes the [`fix-mac-super-key.sh`](#console-options--what-to-use-when) one-liner so the Mac user has the Super→Alt fix recipe right in front of them. |
 
 ### Cleanup behavior
 

@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.9-beta] — 2026-08-28
+
+### Added
+- **`omarchy-vm.sh` now asks "End user on macOS?" in Advanced
+  settings** (default: no). When the answer is yes, the post-install
+  "Next steps" output includes a one-liner for the Mac Super-key
+  fix (from `fix-mac-super-key.sh`), so the end user has the recipe
+  right in their terminal the moment the install finishes — no
+  separate lookup, no extra fetch needed beyond the script they
+  already trust.
+- Templated repo URL constants (`REPO_OWNER`, `REPO_NAME`,
+  `REPO_RAW_BASE`) so the one-liner URLs in the script stay in
+  sync with a single source of truth.
+
+[0.1.9-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.9-beta
+
 ## [0.1.8-beta] — 2026-08-28
 
 ### Added

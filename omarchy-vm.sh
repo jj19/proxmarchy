@@ -20,6 +20,10 @@
 # License: MIT
 set -eEo pipefail
 
+# (REPO_OWNER / REPO_NAME / REPO_RAW_BASE are declared further below near
+# the other URL constants — keep the comment block above short so the
+# script's own usage line shows up first.)
+
 # ----------------------------------------------------------------------------
 # 0. Constants
 # ----------------------------------------------------------------------------
@@ -31,6 +35,13 @@ var_version="latest"   # pulled live from omarchy.org at run time
 OMARCHY_HOME="https://omarchy.org/"
 OMARCHY_ISO_BASE="https://iso.omarchy.org"
 OMARCHY_REPO="https://github.com/basecamp/omarchy"
+
+# Where the helper scripts (fix-mac-super-key.sh, etc.) live. Templated
+# into the one-liner we print in the post-install "Next steps" message so
+# Mac users can remap Super → Alt without leaving the VM console.
+REPO_OWNER="jj19"
+REPO_NAME="proxmarchy"
+REPO_RAW_BASE="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main"
 
 # Community-scripts style color/icon set
 YW=$(printf '\033[33m')
@@ -198,6 +209,7 @@ default_settings() {
   MTU=""
   START_VM="yes"
   CLEANUP_ISO="yes"   # remove the 6 GB Omarchy ISO from Proxmox storage after install
+  MAC_USER="no"       # show the noVNC Super-key fix in the next-steps message?
   METHOD="default"
   METHOD_DESC="Default"
   echo -e "${CONTAINERID}${BOLD}${DGN}VM ID: ${BGN}${VMID}${CL}"
@@ -211,6 +223,7 @@ default_settings() {
   echo -e "${DEFAULT}${BOLD}${DGN}Install: ${BGN}Omarchy wizard (in the Proxmox console)${CL}"
   echo -e "${GATEWAY:-${DEFAULT}}${BOLD}${DGN}Start VM when done: ${BGN}yes${CL}"
   echo -e "${DEFAULT}${BOLD}${DGN}Remove Omarchy ISO from storage after install: ${BGN}yes${CL}  ${YW}(saves ~6 GB)${CL}"
+  echo -e "${DEFAULT}${BOLD}${DGN}End user on macOS? ${BGN}no${CL}  ${YW}(toggle in Advanced to enable the Super-key fix)${CL}"
 }
 
 advanced_settings() {
@@ -312,6 +325,20 @@ advanced_settings() {
   else
     CLEANUP_ISO="no"
     echo -e "${DEFAULT}${BOLD}${DGN}Remove Omarchy ISO after install: ${BGN}no${CL}"
+  fi
+
+  # Is the end user on macOS? The browser noVNC console on macOS often loses
+  # the Super/Cmd key (browser + macOS claim it for system shortcuts), which
+  # breaks Omarchy's Super+Space menu, Super+Enter terminal, etc. If yes,
+  # the next-steps message will include a one-liner to remap Super → Alt
+  # inside Hyprland so everything just works.
+  if whiptail --backtitle "Proxmox VE Helper Scripts" --title "END USER ON MACOS?" \
+      --yesno "Will the end user be connecting to this VM from macOS via the Proxmox browser (noVNC) console?\n\nThe browser noVNC client on macOS often loses the Super/Cmd key, which breaks Omarchy's Super+Space menu and other Super keybinds.\n\nIf 'Yes', the next-steps output will include a one-liner the user can run inside the VM to remap Super → Alt." 16 70; then
+    MAC_USER="yes"
+    echo -e "${DEFAULT}${BOLD}${DGN}End user on macOS: ${BGN}yes${CL}  ${YW}(Super→Alt fix will be in next-steps)${CL}"
+  else
+    MAC_USER="no"
+    echo -e "${DEFAULT}${BOLD}${DGN}End user on macOS: ${BGN}no${CL}"
   fi
 
   # Start VM?
@@ -678,6 +705,20 @@ main() {
   echo -e "    console: keyboard → user → disk → confirm. Installation finishes in"
   echo -e "    a few minutes; on the next reboot the VM boots from disk into the"
   echo -e "    Hyprland desktop."
+  if [[ "$MAC_USER" == "yes" ]]; then
+    echo -e "  ${YW}│${CL}  ${BOLD}macOS noVNC + Super key fix${CL}"
+    echo -e "  ${YW}│${CL}  The browser noVNC client on macOS often loses the Super/Cmd key, which"
+    echo -e "  ${YW}│${CL}  breaks Omarchy's Super+Space menu, Super+Enter terminal, etc. Once"
+    echo -e "  ${YW}│${CL}  the VM is on the Hyprland desktop:"
+    echo -e "  ${YW}│${CL}"
+    echo -e "  ${YW}│${CL}    1. Open a terminal inside the VM (right-click the desktop)"
+    echo -e "  ${YW}│${CL}    2. Run:"
+    echo -e "  ${YW}│${CL}"
+    echo -e "  ${YW}│${CL}      ${BL}bash -c \"\$(curl -fsSL 'https://raw.githubusercontent.com/${REPO_OWNER:-jj19}/proxmarchy/main/fix-mac-super-key.sh?nocache='\$(date +%s))\"${CL}"
+    echo -e "  ${YW}│${CL}"
+    echo -e "  ${YW}│${CL}    After it runs, ${YW}Alt+Space${CL} opens the Omarchy menu and every other"
+    echo -e "  ${YW}│${CL}    Super+X keybind re-maps to Alt+X. Run with ${YW}--undo${CL} to revert."
+  fi
   echo -e "  • Inside the VM, keep it current with any of:"
   echo -e "      ${YW}omarchy update${CL}                  (terminal)"
   echo -e "      ${YW}Super + Alt + Space → Update → Omarchy${CL}  (menu)"
