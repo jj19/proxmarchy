@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.23-beta] — 2026-08-29
+
+### Fixed
+- **noVNC `failed to connect to server` — true root cause.** v0.1.22-beta
+  removed `-display none` from the QEMU args but the VM still came up
+  with `display: none` in its config. The actual culprit was
+  `qm set ... -vga none` on a line above the args call. Proxmox's
+  qemu-server reflects `vga: none` into the VM config and, as a
+  side-effect, also flips `display:` to `none` (no VGA → no display
+  backend) — which tells Proxmox not to start the VNC server at all.
+
+  Added an explicit `qm set ... -display vnc` immediately after the
+  `-vga none` line, restoring the VNC display so noVNC has something
+  to connect to. Source comment updated with a note about the
+  `-vga none` → `display: none` side-effect and why the order matters.
+
+  (Worth noting: my v0.1.22-beta analysis blamed the args string for
+  the same symptom. That was a real bug too — but the `-vga none`
+  was the dominant cause, and removing it from args alone wasn't
+  enough.)
+
+[0.1.23-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.23-beta
+
 ## [0.1.22-beta] — 2026-08-29
 
 ### Fixed

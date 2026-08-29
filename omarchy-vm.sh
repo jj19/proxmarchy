@@ -27,7 +27,7 @@ set -eEo pipefail
 #   bash -c "$(curl -fsSL '.../omarchy-vm.sh?nocache='$(date +%s))"
 # The first line of the script's runtime output should always be:
 #   "Proxmarchy omarchy-vm.sh v0.X.Y-beta  (commit: <short SHA>)"
-PROXMARCHY_VERSION="0.1.22-beta"
+PROXMARCHY_VERSION="0.1.23-beta"
 PROXMARCHY_GIT_SHA="${PROXMARCHY_GIT_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 echo "Proxmarchy omarchy-vm.sh ${PROXMARCHY_VERSION}  (commit: ${PROXMARCHY_GIT_SHA})"
 
@@ -704,7 +704,14 @@ create_vm() {
   # display` + `400 unable to parse option`. Raw `-args` works on every
   # Proxmox version and is what the Proxmox web UI does under the hood
   # for the same settings.
+  #
+  # IMPORTANT: `-vga none` also sets the VM's `display:` config property
+  # to `none` (no VGA → no display backend), which kills the VNC server
+  # Proxmox would otherwise start for noVNC. We have to explicitly
+  # re-set the display to `vnc` on the next line. The order matters:
+  # -vga none first, then -display vnc.
   qm set "$VMID" -vga none >/dev/null
+  qm set "$VMID" -display vnc >/dev/null
 
   # Serial console (handy for Proxmox xterm.js / debugging)
   qm set "$VMID" -serial0 socket >/dev/null
