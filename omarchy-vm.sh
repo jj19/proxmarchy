@@ -27,7 +27,7 @@ set -eEo pipefail
 #   bash -c "$(curl -fsSL '.../omarchy-vm.sh?nocache='$(date +%s))"
 # The first line of the script's runtime output should always be:
 #   "Proxmarchy omarchy-vm.sh v0.X.Y-beta  (commit: <short SHA>)"
-PROXMARCHY_VERSION="0.1.18-beta"
+PROXMARCHY_VERSION="0.1.21-beta"
 PROXMARCHY_GIT_SHA="${PROXMARCHY_GIT_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 echo "Proxmarchy omarchy-vm.sh ${PROXMARCHY_VERSION}  (commit: ${PROXMARCHY_GIT_SHA})"
 
@@ -736,6 +736,15 @@ create_vm() {
   # (For Vulkan passthrough, additionally add ,venus=true and
   #  ensure your QEMU is ≥ 9.0.)
   # Note on the HDA args:
+  #   -audio driver=none                       — tell QEMU which audio
+  #     backend to use for any hda-* device on the host. `none` means
+  #     "create the device but don't try to play it on the host" — the
+  #     guest still sees the audio device (PipeWire in Omarchy picks it
+  #     up as an ALSA sink/source), but no actual sound comes out. This
+  #     avoids the "no default audio driver available" error that
+  #     Proxmox hosts hit because the QEMU build typically doesn't have
+  #     pa/alsa backends compiled in, and the Mac user is on noVNC
+  #     (no SPICE audio channel) anyway.
   #   -device ich9-intel-hda,id=sound0,bus=pci.0,addr=0x18   — the HDA
   #     controller (I/O + interrupt registers). The PCI addr 0x18 is a
   #     common slot for the HDA on ICH9; 0x1b is another valid choice.
@@ -744,7 +753,7 @@ create_vm() {
   #     `hda-duplex` (NOT `intel-hda-duplex` — that's wrong and QEMU
   #     errors with "'intel-hda-duplex' is not a valid device model
   #     name" on qm start).
-  qm set "$VMID" -args "-display none -device virtio-gpu,max_outputs=1 -device ich9-intel-hda,id=sound0,bus=pci.0,addr=0x18 -device hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0" >/dev/null
+  qm set "$VMID" -args "-audio driver=none -display none -device virtio-gpu,max_outputs=1 -device ich9-intel-hda,id=sound0,bus=pci.0,addr=0x18 -device hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0" >/dev/null
 
   # ── Performance ────────────────────────────────────────────────────────
   # Disable memory ballooning. The default balloon device causes memory

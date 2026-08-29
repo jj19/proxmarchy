@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.21-beta] — 2026-08-28
+
+### Fixed
+- **`no default audio driver available` on `qm start`** (follow-up to
+  v0.1.20-beta). The HDA codec device now exists, but QEMU needs an
+  explicit audio backend to attach to it. Proxmox hosts ship a QEMU
+  build without `pa` (PulseAudio) or `alsa` backends, so the
+  default-backend fallback fails. Added `-audio driver=none` to the
+  `-args` line. This creates the audio device in the guest — PipeWire
+  in Omarchy picks it up as an ALSA sink/source — but doesn't try to
+  play on the host (no sound comes out of the Proxmox box, which is
+  what we want anyway: the Mac user is on noVNC, which has no SPICE
+  audio channel). Comment in the source explains the choice.
+
+### Changed
+- **Bumped the in-script `PROXMARCHY_VERSION` constant from
+  `0.1.18-beta` to `0.1.21-beta`** so the banner line printed at the
+  top of the script's output reports the correct version. (The
+  `VERSION` file was also bumped.) The version banner is the
+  quickest way to confirm you're on the code you think you're on
+  when GitHub's CDN is repeatedly serving stale blobs.
+
+[0.1.21-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.21-beta
+
 ## [0.1.20-beta] — 2026-08-28
 
 ### Fixed
