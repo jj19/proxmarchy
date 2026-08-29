@@ -121,12 +121,27 @@ pve_check() {
     msg_error "pveversion not found. This script must run on a Proxmox VE host."
     exit 1
   fi
-  local PVE_VER
+  # pveversion emits e.g. "pve-manager/9.1.4/...". The patch digit is what
+  # tripped v0.1.0-beta — we only care about major.minor.
+  local PVE_VER PVE_MAJOR PVE_MINOR
   PVE_VER="$(pveversion | awk -F'/' '{print $2}' | awk -F'-' '{print $1}')"
-  if [[ "$PVE_VER" =~ ^8\.([0-9]+)$ ]] || [[ "$PVE_VER" =~ ^9\.[0-2]$ ]]; then
+  PVE_MAJOR="$(echo "$PVE_VER" | cut -d. -f1)"
+  PVE_MINOR="$(echo "$PVE_VER" | cut -d. -f2)"
+
+  if ! [[ "$PVE_MAJOR" =~ ^[0-9]+$ && "$PVE_MINOR" =~ ^[0-9]+$ ]]; then
+    msg_error "Could not parse Proxmox VE version from: $PVE_VER"
+    exit 1
+  fi
+
+  if (( PVE_MAJOR == 8 && PVE_MINOR >= 0 && PVE_MINOR <= 9 )); then
     return 0
   fi
-  msg_error "Proxmox VE ${PVE_VER} not supported (need 8.x or 9.0–9.2)."
+  if (( PVE_MAJOR == 9 && PVE_MINOR >= 0 && PVE_MINOR <= 9 )); then
+    return 0
+  fi
+
+  msg_error "Proxmox VE ${PVE_VER} not supported (need 8.0–8.x or 9.0–9.x)."
+  msg_error "Open an issue: https://github.com/jj19/proxmarchy/issues"
   exit 1
 }
 

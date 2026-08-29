@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1-beta] — 2026-08-28
+
+### Fixed
+- **Proxmox VE version check** was rejecting valid patch releases like
+  `9.1.4`. The check now extracts `MAJOR.MINOR` from `pveversion` and
+  accepts any `8.0–8.x` or `9.0–9.x`. Reported on a Proxmox 9.1.4 host
+  minutes after v0.1.0-beta was cut — the one-liner now runs through
+  on those nodes without editing the script.
+
+[0.1.1-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.1-beta
+
 ## [0.1.0-beta] — 2026-08-28
 
 ### Added
