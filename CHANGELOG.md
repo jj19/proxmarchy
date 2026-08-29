@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.17-beta] — 2026-08-28
+
+### Fixed
+- **`Property 'virtio-gpu-pci.venus' not found` on `qm start`.**
+  The `venus=true` virtio-gpu property (Vulkan passthrough,
+  QEMU 9.0+) was rejected by some Proxmox 9.x builds that
+  ship an older QEMU than the package version suggests.
+  Dropped `venus=true` from the virtio-gpu args; `blob=true`
+  alone (QEMU 7.1+, the older 3D resource path) is kept. To
+  opt into Vulkan passthrough on a host with QEMU ≥ 9.0,
+  add `,venus=true` after `blob=true` in the args manually.
+
+[0.1.17-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.17-beta
+
 ## [0.1.16-beta] — 2026-08-28
 
 ### Changed

@@ -715,7 +715,15 @@ create_vm() {
   #   -display none                         — kill the default emulated display
   #   -device virtio-gpu,blob=true,...      — proper 3D-accelerated GPU
   #   -device ich9-intel-hda + -duplex      — Intel HDA sound for PipeWire
-  qm set "$VMID" -args "-display none -device virtio-gpu,blob=true,venus=true,max_outputs=1 -device ich9-intel-hda,id=sound0,bus=pci.0,addr=0x18 -device intel-hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0" >/dev/null
+  # Note on virtio-gpu properties:
+  #   - blob=true   : QEMU 7.1+ — enables the 3D resource path (older API).
+  #   - venus=true  : QEMU 9.0+ — enables the Vulkan passthrough (newer API).
+  # We stick with `blob` only because `venus` was rejected as
+  # "Property 'virtio-gpu-pci.venus' not found" on some Proxmox 9.x
+  # builds that ship an older QEMU than the package version suggests.
+  # To opt into `venus` for true Vulkan passthrough, run on a host
+  # with QEMU ≥ 9.0 and add `,venus=true` after `blob=true`.
+  qm set "$VMID" -args "-display none -device virtio-gpu,blob=true,max_outputs=1 -device ich9-intel-hda,id=sound0,bus=pci.0,addr=0x18 -device intel-hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0" >/dev/null
 
   # ── Performance ────────────────────────────────────────────────────────
   # Disable memory ballooning. The default balloon device causes memory
