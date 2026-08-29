@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.29-beta] — 2026-08-29
+
+### Added
+- **Warning in next-steps to pick NO encryption in the Omarchy
+  wizard's disk step.** The wizard offers LUKS disk encryption
+  and, if accepted, the initramfs will prompt for the passphrase
+  on every boot. For a personal VM accessed via noVNC this is
+  a UX trap: long passphrases are painful to type through a
+  browser, the passphrase is unrecoverable if forgotten, and
+  there's no way to bypass it from the Proxmox host. The
+  warning explains this and recommends ext4/btrfs without
+  encryption, relying on Proxmox network isolation for at-rest
+  protection.
+
+  (Code change is documentation-only — the script can't
+  pre-configure the Omarchy wizard, so the only lever we have
+  is the next-steps message.)
+
+[0.1.29-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.29-beta
+
 ## [0.1.28-beta] — 2026-08-29
 
 ### Fixed

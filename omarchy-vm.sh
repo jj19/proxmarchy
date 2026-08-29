@@ -27,7 +27,7 @@ set -eEo pipefail
 #   bash -c "$(curl -fsSL '.../omarchy-vm.sh?nocache='$(date +%s))"
 # The first line of the script's runtime output should always be:
 #   "Proxmarchy omarchy-vm.sh v0.X.Y-beta  (commit: <short SHA>)"
-PROXMARCHY_VERSION="0.1.28-beta"
+PROXMARCHY_VERSION="0.1.29-beta"
 PROXMARCHY_GIT_SHA="${PROXMARCHY_GIT_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 echo "Proxmarchy omarchy-vm.sh ${PROXMARCHY_VERSION}  (commit: ${PROXMARCHY_GIT_SHA})"
 
@@ -903,6 +903,14 @@ main() {
   echo -e "    console: keyboard → user → disk → confirm. Installation finishes in"
   echo -e "    a few minutes. ${BOLD}Then the VM reboots, and the boot order (ISO first)"
   echo -e "    makes the installer run again.${CL} That's the section right below."
+  echo
+  echo -e "  ${YW}${BOLD}⚠  Pick NO encryption in the disk step.${CL} The Omarchy wizard offers"
+  echo -e "  ${YW}disk encryption (LUKS). If you accept it, the initramfs will prompt for a"
+  echo -e "  ${YW}password at every boot — and there's no way to bypass it from the Proxmox"
+  echo -e "  ${YW}host. Worse, typing a long passphrase through noVNC is painful and the"
+  echo -e "  ${YW}password is unrecoverable if you forget it. For a personal VM, leave the"
+  echo -e "  ${YW}disk unencrypted (ext4 or btrfs) and rely on Proxmox's network isolation"
+  echo -e "  ${YW}for at-rest protection.${CL}"
   if [[ "$MAC_USER" == "yes" ]]; then
     echo -e "  ${YW}│${CL}  ${BOLD}macOS noVNC + Super key fix${CL}"
     echo -e "  ${YW}│${CL}  The browser noVNC client on macOS often loses the Super/Cmd key, which"
