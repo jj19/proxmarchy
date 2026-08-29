@@ -547,19 +547,31 @@ download_omarchy_iso() {
   msg_ok "Latest Omarchy ISO: ${BL}${ISO_URL}${CL}"
   ISO_FILE="$(basename "$ISO_URL")"
 
+  # Resolve the target path inside Proxmox storage
+  local ISO_DIR TARGET
+  ISO_DIR=$(storage_iso_dir "$STORAGE")
+  if [[ -z "$ISO_DIR" ]]; then
+    msg_error "Storage '${STORAGE}' has no local path (LVM-thin / ZFS / Ceph / etc.)."
+    msg_error "Pick a dir-backed storage for the ISO (typical: 'local')."
+    exit 1
+  fi
+  TARGET="${ISO_DIR}/${ISO_FILE}"
+
   # If the exact same ISO is already in the chosen Proxmox storage, reuse
   # it instead of re-downloading 6 GB. Catches the "I just ran this 10
   # minutes ago" case. If a *different* omarchy-*.iso is sitting there
   # from an older run, the download path below will overwrite it.
-  local ISO_DIR
-  ISO_DIR=$(storage_iso_dir "$STORAGE")
-  if [[ -n "$ISO_DIR" && -f "${ISO_DIR}/${ISO_FILE}" ]]; then
+  if [[ -f "$TARGET" ]]; then
     local SIZE
-    SIZE=$(du -h "${ISO_DIR}/${ISO_FILE}" | awk '{print $1}')
+    SIZE=$(du -h "$TARGET" | awk '{print $1}')
     msg_ok "Reusing ${BL}${ISO_FILE}${CL} already in Proxmox storage (${BOLD}${SIZE}${CL}) — skipping download"
     return 0
   fi
 
+  # Download into TEMP_DIR (we're pushd'd there), then copy into Proxmox
+  # storage. Doing the copy HERE (not in main) means the rest of the
+  # script can just trust that the file is at the target path and never
+  # has to think about TEMP_DIR vs. Proxmox storage again.
   msg_info "Downloading ${ISO_FILE}"
   if ! curl -f#SL -o "$ISO_FILE" "$ISO_URL"; then
     msg_error "ISO download failed: $ISO_URL"
@@ -567,6 +579,14 @@ download_omarchy_iso() {
   fi
   echo -en "\e[1A\e[0K"
   msg_ok "Downloaded ${BL}${ISO_FILE}${CL} (${BOLD}$(du -h "$ISO_FILE" | awk '{print $1}')${CL})"
+
+  msg_info "Storing ISO in Proxmox storage"
+  mkdir -p "${ISO_DIR}/template/iso"
+  if ! cp -f "$ISO_FILE" "$TARGET"; then
+    msg_error "Failed to copy ISO into Proxmox storage at $TARGET"
+    exit 1
+  fi
+  msg_ok "Stored ISO in ${BL}${TARGET}${CL}"
 }
 
 # ----------------------------------------------------------------------------
@@ -794,8 +814,9 @@ main() {
     msg_info "Skipping cidata — you'll be walked through the ISO wizard in the VM console"
   fi
 
-  # Push the ISOs into the Proxmox storage so qm can attach them
-  upload_iso_to_storage "$ISO_FILE" "$ISO_FILE" "$STORAGE"
+  # The Omarchy ISO is already in Proxmox storage at this point
+  # (download_omarchy_iso handled the reuse-or-download+copy case).
+  # Only the cidata ISO (always built fresh in TEMP_DIR) needs an upload.
   if [[ -n "${CIDATA_ISO:-}" && -f "$TEMP_DIR/$CIDATA_ISO" ]]; then
     upload_iso_to_storage "$TEMP_DIR/$CIDATA_ISO" "$CIDATA_ISO" "$STORAGE"
   fi

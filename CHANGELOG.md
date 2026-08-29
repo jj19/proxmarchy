@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5-beta] — 2026-08-28
+
+### Fixed
+- **Reuse path tried to `cp` a non-existent local file.** When the
+  exact Omarchy ISO was already in Proxmox storage, `download_omarchy_iso`
+  returned early before copying anything into `TEMP_DIR`. The main
+  flow then called `upload_iso_to_storage "$ISO_FILE" "$ISO_FILE"`
+  with a bare filename, and `cp` failed with
+  `cannot stat 'omarchy-4.0.1.iso': No such file or directory`. The
+  `download_omarchy_iso` function now handles the full "discover URL
+  → reuse or download+place into Proxmox storage" flow internally,
+  and `main` no longer calls `upload_iso_to_storage` for the main
+  ISO at all (it still does for the cidata ISO, which is always
+  built fresh in `TEMP_DIR`). The reuse path is now a true no-op on
+  the filesystem and only prints a single "Reusing ..." line.
+
+[0.1.5-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.5-beta
+
 ## [0.1.4-beta] — 2026-08-28
 
 ### Changed
