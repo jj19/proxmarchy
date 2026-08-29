@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.11-beta] — 2026-08-28
+
+### Added
+- **Pre-staged mac fix data CD-ROM when `MAC_USER=yes`.** The
+  Proxmox script now builds a tiny ISO 9660 / Joliet / Rock Ridge
+  CD-ROM (volume label `FIX`) containing a copy of
+  `fix-mac-super-key.sh` as `fix.sh`, attaches it to the VM as
+  `ide3`, and detaches + removes it in the post-install cleanup.
+  This sidesteps the noVNC clipboard problem: the end user
+  doesn't need to paste anything — they just open a terminal in
+  Hyprland and type
+  ```
+  bash /run/media/<user>/FIX/fix.sh
+  ```
+  (34 characters, very typeable). The post-install "Next steps"
+  output now leads with this short path and only mentions the
+  longer GitHub one-liner as a fallback if the data CD-ROM is
+  gone. Re-adds `genisoimage` to the required tools (it was
+  removed in v0.1.6 when cidata was dropped — now needed again
+  for the data ISO).
+
+[0.1.11-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.11-beta
+
 ## [0.1.10-beta] — 2026-08-28
 
 ### Changed

@@ -158,9 +158,9 @@ pve_check() {
 }
 
 require_tools() {
-  for t in qm pvesm whiptail curl openssl awk sed numfmt du; do
+  for t in qm pvesm whiptail curl openssl genisoimage awk sed numfmt du; do
     command -v "$t" >/dev/null 2>&1 || {
-      msg_error "Missing required tool: $t"
+      msg_error "Missing required tool: $t  (apt install genisoimage xorriso)"
       exit 1
     }
   done
@@ -580,6 +580,54 @@ download_omarchy_iso() {
 # ----------------------------------------------------------------------------
 
 # ----------------------------------------------------------------------------
+# 6b. Mac fix data ISO (only when MAC_USER=yes)
+#
+# Why: noVNC in the browser has no clipboard, so the end user can't
+# paste a long one-liner into the VM terminal. This function builds a
+# tiny data CD-ROM that auto-mounts in the installed Omarchy under
+# /run/media/<user>/FIX/fix.sh, so the user just types:
+#
+#     bash /run/media/omarchy/FIX/fix.sh
+#
+# (or runs the file from the file manager — double-click).
+#
+# The fix is sourced directly from the same proxmarchy repo the main
+# script came from, so the two stay in lock-step on every run.
+# ----------------------------------------------------------------------------
+build_mac_fix_iso() {
+  local FIX_DIR DATA_ISO
+  FIX_DIR="$(mktemp -d)"
+  DATA_ISO="${TEMP_DIR}/proxmarchy-fix.iso"
+
+  # Pull the latest fix script straight from the repo
+  msg_info "Fetching the mac fix script from ${REPO_RAW_BASE}/fix-mac-super-key.sh"
+  if ! curl -fsSL "${REPO_RAW_BASE}/fix-mac-super-key.sh" -o "${FIX_DIR}/fix.sh"; then
+    msg_error "Failed to fetch the fix script. The VM will still be created —"
+    msg_error "the user can run the fix later via the GitHub one-liner."
+    rm -rf "$FIX_DIR"
+    return 1
+  fi
+  chmod +x "${FIX_DIR}/fix.sh"
+  msg_ok "Fetched fix script"
+
+  # Build a tiny ISO 9660 (Joliet + Rock Ridge for filename/perm support)
+  # Volume label "FIX" so the user can find it at /run/media/<user>/FIX/
+  msg_info "Building data ISO (label=FIX)"
+  if ! genisoimage -V "FIX" -joliet -rock -o "$DATA_ISO" "$FIX_DIR" >/dev/null 2>&1; then
+    msg_error "genisoimage failed. The VM will still be created —"
+    msg_error "the user can run the fix later via the GitHub one-liner."
+    rm -rf "$FIX_DIR"
+    return 1
+  fi
+  rm -rf "$FIX_DIR"
+  msg_ok "Built $(du -h "$DATA_ISO" | awk '{print $1}') data ISO"
+
+  # Upload to the same Proxmox storage as the main ISO
+  upload_iso_to_storage "$DATA_ISO" "proxmarchy-fix.iso" "$STORAGE"
+  msg_ok "Uploaded to Proxmox storage as proxmarchy-fix.iso"
+}
+
+# ----------------------------------------------------------------------------
 # 7. Create the VM
 # ----------------------------------------------------------------------------
 create_vm() {
@@ -637,6 +685,14 @@ create_vm() {
   # Proxmox console — no cidata / unattended option)
   qm set "$VMID" -ide2 "${STORAGE}:iso/${ISO_FILE},media=cdrom" >/dev/null
 
+  # If MAC_USER=yes, also attach the pre-staged fix script as a second
+  # CD-ROM on ide3. Auto-mounts in the installed Omarchy at
+  # /run/media/<user>/FIX/fix.sh, so the user can run it with a short
+  # local command (no clipboard needed).
+  if [[ "$MAC_USER" == "yes" ]]; then
+    qm set "$VMID" -ide3 "${STORAGE}:iso/proxmarchy-fix.iso,media=cdrom" >/dev/null
+  fi
+
   # Boot order: disk first so the empty disk falls through to the ISO on the
   # first boot. After install, the VM boots straight from disk.
   qm set "$VMID" -boot "order=scsi0;ide2" >/dev/null
@@ -683,6 +739,19 @@ post_install_cleanup() {
   else
     msg_info "Keeping ${BL}${ISO_FILE}${CL} in Proxmox storage (CLEANUP_ISO=no)"
   fi
+
+  # Always drop the mac-fix data ISO. It's only ~10 KB, but the end user
+  # is done with it after install, so keeping the VM config clean is
+  # worth more than the disk space.
+  if [[ "$MAC_USER" == "yes" ]]; then
+    if qm set "$VMID" -delete ide3 >/dev/null 2>&1; then
+      msg_ok "Detached mac-fix data ISO from VM"
+    fi
+    if [[ -f "$ISO_TARGET_DIR/proxmarchy-fix.iso" ]]; then
+      rm -f "$ISO_TARGET_DIR/proxmarchy-fix.iso"
+      msg_ok "Removed mac-fix data ISO from Proxmox storage"
+    fi
+  fi
 }
 
 # ----------------------------------------------------------------------------
@@ -703,6 +772,14 @@ main() {
   pick_storage
   pick_disk_storage
   download_omarchy_iso
+
+  # When the end user is on macOS, pre-stage a small data ISO with the
+  # Super→Alt fix script. noVNC has no clipboard, so the user can't
+  # paste a long one-liner — but they can type a short local path
+  # to a file we already placed in the VM.
+  if [[ "$MAC_USER" == "yes" ]]; then
+    build_mac_fix_iso
+  fi
 
   create_vm
   start_vm
@@ -730,16 +807,24 @@ main() {
   if [[ "$MAC_USER" == "yes" ]]; then
     echo -e "  ${YW}│${CL}  ${BOLD}macOS noVNC + Super key fix${CL}"
     echo -e "  ${YW}│${CL}  The browser noVNC client on macOS often loses the Super/Cmd key, which"
-    echo -e "  ${YW}│${CL}  breaks Omarchy's Super+Space menu, Super+Enter terminal, etc. Once"
-    echo -e "  ${YW}│${CL}  the VM is on the Hyprland desktop:"
+    echo -e "  ${YW}│${CL}  breaks Omarchy's Super+Space menu, Super+Enter terminal, etc."
     echo -e "  ${YW}│${CL}"
-    echo -e "  ${YW}│${CL}    1. Open a terminal inside the VM (right-click the desktop)"
-    echo -e "  ${YW}│${CL}    2. Run:"
+    echo -e "  ${YW}│${CL}  ${BOLD}A small data CD-ROM was attached to the VM with the fix script on it.${CL}"
+    echo -e "  ${YW}│${CL}  noVNC has no clipboard, so you can't paste — but the file is already in"
+    echo -e "  ${YW}│${CL}  the VM. Open a terminal inside Hyprland (right-click the desktop) and type:"
     echo -e "  ${YW}│${CL}"
-    echo -e "  ${YW}│${CL}      ${BL}bash -c \"\$(curl -fsSL 'https://raw.githubusercontent.com/${REPO_OWNER:-jj19}/proxmarchy/main/fix-mac-super-key.sh?nocache='\$(date +%s))\"${CL}"
+    echo -e "  ${YW}│${CL}      ${GN}bash /run/media/omarchy/FIX/fix.sh${CL}"
     echo -e "  ${YW}│${CL}"
-    echo -e "  ${YW}│${CL}    After it runs, ${YW}Alt+Space${CL} opens the Omarchy menu and every other"
-    echo -e "  ${YW}│${CL}    Super+X keybind re-maps to Alt+X. Run with ${YW}--undo${CL} to revert."
+    echo -e "  ${YW}│${CL}  (If your username isn't \"omarchy\", replace it: e.g. \`/run/media/jay/FIX/\`."
+    echo -e "  ${YW}│${CL}  Or just run \`ls /run/media/\` to find it.)"
+    echo -e "  ${YW}│${CL}"
+    echo -e "  ${YW}│${CL}  After it runs, ${YW}Alt+Space${CL} opens the Omarchy menu and every other"
+    echo -e "  ${YW}│${CL}  Super+X keybind re-maps to Alt+X. Re-run with ${YW}--undo${CL} to revert."
+    echo -e "  ${YW}│${CL}"
+    echo -e "  ${YW}│${CL}  If for some reason the data CD-ROM is gone (e.g. you ran cleanup),"
+    echo -e "  ${YW}│${CL}  fetch it from GitHub instead — long, but typeable:"
+    echo -e "  ${YW}│${CL}"
+    echo -e "  ${YW}│${CL}      ${BL}bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/fix-mac-super-key.sh)\"${CL}"
   fi
   echo -e "  • Inside the VM, keep it current with any of:"
   echo -e "      ${YW}omarchy update${CL}                  (terminal)"

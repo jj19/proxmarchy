@@ -80,7 +80,7 @@ on Proxmox VE 8.x or 9.x. The script will:
 | Install mode | **Omarchy wizard** (in the Proxmox console) | no unattended/cidata option — keep it simple |
 | Start when done | yes | |
 | **Remove Omarchy ISO after install** | **yes** | toggleable in Advanced; the ISO is 6 GB, so this saves real space. The VM doesn't need it after install (boot order is `scsi0;ide2`, disk wins). |
-| **End user on macOS?** | **no** | toggleable in Advanced; if "yes", the post-install "Next steps" output includes the [`fix-mac-super-key.sh`](#console-options--what-to-use-when) one-liner so the Mac user has the Super→Alt fix recipe right in front of them. |
+| **End user on macOS?** | **no** | toggleable in Advanced; if "yes", the script pre-stages a small data CD-ROM (volume label `FIX`, attached to `ide3`) with the [`fix-mac-super-key.sh`](#console-options--what-to-use-when) script on it. The post-install "Next steps" output tells the end user to type `bash /run/media/<user>/FIX/fix.sh` (34 chars) to apply the fix — no clipboard needed (noVNC has no paste). The data CD-ROM is detached and removed in the post-install cleanup. |
 
 ### Cleanup behavior
 
@@ -132,15 +132,23 @@ tradeoffs depending on your platform:
 - **Linux / Windows desktop user**: install `virt-viewer` and use SPICE
   for everything. Best keyboard, no fuss.
 - **macOS user — pure GUI via noVNC**: open the Proxmox noVNC console
-  for the VM, then fix the Super key with the one-liner below. After
-  it runs, `Alt + Space` opens the Omarchy menu, `Alt + Enter` opens
-  a terminal, and every other Super+X keybind in Omarchy also remaps
-  to Alt+X.
-
+  for the VM. **The Proxmox installer (v0.1.11+) automatically pre-stages
+  a small data CD-ROM with the fix script on it**, because noVNC has
+  no clipboard and you can't paste a one-liner. Just open a terminal
+  inside the Hyprland desktop (right-click the desktop) and type:
   ```bash
-  # Inside the VM (in any terminal — right-click the Hyprland desktop
-  # for one, or press Ctrl+Alt+T):
-  bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/jj19/proxmarchy/main/fix-mac-super-key.sh?nocache='$(date +%s))"
+  bash /run/media/omarchy/FIX/fix.sh
+  ```
+  (If your username isn't `omarchy`, run `ls /run/media/` to find the
+  right path. Adjust the path accordingly.) After it runs, `Alt + Space`
+  opens the Omarchy menu, `Alt + Enter` opens a terminal, and every
+  other Super+X keybind in Omarchy also remaps to Alt+X. Re-run with
+  `bash /run/media/omarchy/FIX/fix.sh -- --undo` to revert.
+
+  If you're using this script standalone (not the Proxmox installer),
+  or if the data CD-ROM is gone, the equivalent long one-liner is:
+  ```bash
+  bash -c "$(curl -fsSL https://raw.githubusercontent.com/jj19/proxmarchy/main/fix-mac-super-key.sh)"
   ```
 
   What it does:
