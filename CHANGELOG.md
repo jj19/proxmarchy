@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.14-beta] — 2026-08-28
+
+### Fixed
+- **Double-suffix path bug in `storage_iso_dir`.** The helper
+  returned the full path including `/template/iso`, but
+  `upload_iso_to_storage()` and `post_install_cleanup()` then
+  appended `/template/iso` again, producing the doubled path
+  `/var/lib/vz/template/iso/template/iso/proxmarchy-fix.iso` and
+  a Proxmox error `volume 'local:iso/proxmarchy-fix.iso' does
+  not exist`. The bug had been latent since v0.1.4 (when
+  `storage_iso_dir` was first added) but only surfaced in v0.1.12
+  when `upload_iso_to_storage()` was re-introduced for the mac
+  fix data CD-ROM. The helper now returns the storage's base
+  path (e.g. `/var/lib/vz`), and all callers append
+  `/template/iso` themselves. `download_omarchy_iso()` had to be
+  updated to do the same; the two other callers already did.
+
+[0.1.14-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.14-beta
+
 ## [0.1.13-beta] — 2026-08-28
 
 ### Fixed

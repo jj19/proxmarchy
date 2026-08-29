@@ -488,14 +488,20 @@ pick_disk_storage() {
 }
 
 # ----------------------------------------------------------------------------
-# 4b. Resolve the on-disk path of a Proxmox storage's ISO directory.
-#     Returns "<path>/template/iso" for dir-backed storages, or empty if
-#     the storage has no local filesystem path (LVM-thin / ZFS / Ceph / etc.).
+# 4b. Resolve the on-disk path of a Proxmox storage's `path` line.
+#     Returns the storage's filesystem root (e.g. "/var/lib/vz") for
+#     dir-backed storages, or empty if the storage has no local
+#     filesystem path (LVM-thin / ZFS / Ceph / etc.).
+#
+#     Callers should append "/template/iso" themselves to get the
+#     actual ISO directory, and then a filename. Doing it this way
+#     (rather than baking the suffix into the helper) avoids a
+#     double-suffix bug where callers would also append
+#     "/template/iso" and end up at ".../template/iso/template/iso/".
 # ----------------------------------------------------------------------------
 storage_iso_dir() {
   local st="$1"
-  local base
-  base=$(awk -v s="$st" '
+  awk -v s="$st" '
     $1 ~ /^[a-zA-Z0-9_.-]+:$/ {
       current = $2
       in_storage = (current == s)
@@ -505,8 +511,7 @@ storage_iso_dir() {
       print $2
       exit
     }
-  ' /etc/pve/storage.cfg 2>/dev/null)
-  [[ -n "$base" ]] && echo "${base}/template/iso"
+  ' /etc/pve/storage.cfg 2>/dev/null
 }
 
 # ----------------------------------------------------------------------------
@@ -564,7 +569,7 @@ download_omarchy_iso() {
     msg_error "Pick a dir-backed storage for the ISO (typical: 'local')."
     exit 1
   fi
-  TARGET="${ISO_DIR}/${ISO_FILE}"
+  TARGET="${ISO_DIR}/template/iso/${ISO_FILE}"
 
   # If the exact same ISO is already in the chosen Proxmox storage, reuse
   # it instead of re-downloading 6 GB. Catches the "I just ran this 10
