@@ -1,0 +1,24 @@
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Temp / build artifacts (the omarchy-vm.sh downloader uses a mktemp dir at runtime,
+# but anyone running the script leaves no checked-in artifacts to ignore — kept here
+# for future tooling that may be added.)
+/tmp/
+/build/
+/dist/
+
+# Local secrets / config
+.env
+.env.local
+*.pem
+*.key
+
+# Don't check in the 6 GB Omarchy ISO if anyone accidentally runs the install
+# in the repo root.
+*.iso
+!omarchy-*.iso
