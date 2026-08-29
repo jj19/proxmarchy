@@ -680,20 +680,26 @@ create_vm() {
   # dedicated virtio-gpu with proper VRAM and host-side 3D acceleration.
   # This is what unblocks smooth Hyprland / Wayland rendering (the legacy
   # `-vga virtio,memory=64` is 2D-only and software-renders most things).
-  qm set "$VMID" -display none >/dev/null
-  qm set "$VMID" -gpu virtio,memory=512,accel=hw >/dev/null
+  #
+  # We use `-args` to pass the QEMU flags directly instead of the newer
+  # `qm set -display none` / `qm set -gpu virtio,accel=hw` flags because the
+  # latter are missing from some Proxmox API schemas / `pve-qemu-kvm`
+  # package versions and the API rejects them with `Unknown option:
+  # display` + `400 unable to parse option`. Raw `-args` works on every
+  # Proxmox version and is what the Proxmox web UI does under the hood
+  # for the same settings.
+  qm set "$VMID" -vga none >/dev/null
 
   # Serial console (handy for Proxmox xterm.js / debugging)
   qm set "$VMID" -serial0 socket >/dev/null
 
-  # ── Sound ───────────────────────────────────────────────────────────────
-  # Intel HDA on the ICH9 bus. PipeWire / WirePlumber in Omarchy auto-detect
-  # it as an ALSA sink/source. NOTE: noVNC doesn't carry audio, so this is
-  # only audible over a SPICE console (Linux virt-viewer / Windows). Mac
-  # users on noVNC will see the device in `pactl list sinks short` but
-  # nothing will play in the browser — pipe it over SSH / PulseAudio's
-  # network sink if you actually need to hear it from macOS.
-  qm set "$VMID" -args "-device ich9-intel-hda,id=sound0,bus=pci.0,addr=0x18 -device intel-hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0" >/dev/null
+  # ── Display + sound (combined QEMU -args) ─────────────────────────────
+  # All raw QEMU args go in a single -args call (subsequent -args calls
+  # overwrite the previous one). Includes:
+  #   -display none                         — kill the default emulated display
+  #   -device virtio-gpu,blob=true,...      — proper 3D-accelerated GPU
+  #   -device ich9-intel-hda + -duplex      — Intel HDA sound for PipeWire
+  qm set "$VMID" -args "-display none -device virtio-gpu,blob=true,venus=true,max_outputs=1 -device ich9-intel-hda,id=sound0,bus=pci.0,addr=0x18 -device intel-hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0" >/dev/null
 
   # ── Performance ────────────────────────────────────────────────────────
   # Disable memory ballooning. The default balloon device causes memory

@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.13-beta] — 2026-08-28
+
+### Fixed
+- **`Unknown option: display` / `400 unable to parse option` from
+  `qm set -display` and `qm set -gpu`.** Some Proxmox versions /
+  `pve-qemu-kvm` package versions don't expose the newer
+  `display` and `gpu` qm CLI / API options even though the
+  underlying QEMU supports them. The script now passes those
+  QEMU flags directly via `qm set ... -args` (`-display none`
+  + `-device virtio-gpu,blob=true,venus=true,max_outputs=1`),
+  which works on every Proxmox version. The sound device
+  (ich9-intel-hda) is also rolled into the same `-args` call,
+  so there's only one `-args` per VM.
+
+  Also: dropped the standalone `-vga none` before the `-args`
+  call (it was a no-op given the next call replaces everything);
+  the new flow is just `qm set --vga none` followed by the
+  single combined `qm set --args ...` call.
+
+[0.1.13-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.13-beta
+
 ## [0.1.12-beta] — 2026-08-28
 
 ### Fixed

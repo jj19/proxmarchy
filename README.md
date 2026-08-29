@@ -276,10 +276,10 @@ qm create 101 --name my-omarchy \
   --efidisk0 local-lvm:0,efitype=4m,pre-enrolled-keys=0 \
   --scsi0 local-lvm:100,discard=on,iothread=1 \
   --net0 virtio,bridge=vmbr0 \
-  --display none --gpu virtio,memory=512,accel=hw \
+  --vga none \
   --serial0 socket \
   --balloon 0 \
-  --args '-device ich9-intel-hda,id=sound0,bus=pci.0,addr=0x18 -device intel-hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0' \
+  --args '-display none -device virtio-gpu,blob=true,venus=true,max_outputs=1 -device ich9-intel-hda,id=sound0,bus=pci.0,addr=0x18 -device intel-hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0' \
   --ide2 local:iso/omarchy.iso,media=cdrom \
   --boot order='scsi0;ide2'
 qm start 101
@@ -293,13 +293,22 @@ qm start 101
 The defaults the script picks are tuned for a snappy Hyprland
 desktop — not for "minimum viable VM":
 
-- **`-display none --gpu virtio,memory=512,accel=hw`** (PVE 8.1+):
-  the modern split. Kills the legacy VGA emulated display and
-  exposes a dedicated virtio-gpu with 512 MB of VRAM and
-  **host-side 3D acceleration**. This is what unblocks smooth
-  Hyprland / Wayland rendering — the legacy `--vga virtio` (the
-  `-memory 64` variant in particular) is 2D-only and
-  software-renders most things, so animations and shadows lag.
+- **Raw QEMU args for display + GPU** (PVE 8.1+): the modern
+  split is `-display none` (kill the legacy VGA emulated
+  display) + a dedicated `virtio-gpu` with `blob=true` and
+  `venus=true` for host-side 3D acceleration. This is what
+  unblocks smooth Hyprland / Wayland rendering — the legacy
+  `--vga virtio` (the `-memory 64` variant in particular) is
+  2D-only and software-renders most things, so animations and
+  shadows lag.
+  - We pass these via `qm set ... -args` rather than the newer
+    `qm set --display` / `qm set --gpu` flags because the
+    latter are missing from some Proxmox API schemas /
+    `pve-qemu-kvm` package versions, and the API rejects them
+    with `Unknown option: display` + `400 unable to parse
+    option`. Raw `-args` works on every Proxmox version and is
+    what the Proxmox web UI does under the hood for the same
+    settings.
 - **`-balloon 0`**: disable the memory ballooning device. The
   default balloon causes memory pressure and latency spikes as
   Proxmox reclaims RAM. With the VM sized for its workload
