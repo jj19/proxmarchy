@@ -27,7 +27,7 @@ set -eEo pipefail
 #   bash -c "$(curl -fsSL '.../omarchy-vm.sh?nocache='$(date +%s))"
 # The first line of the script's runtime output should always be:
 #   "Proxmarchy omarchy-vm.sh v0.X.Y-beta  (commit: <short SHA>)"
-PROXMARCHY_VERSION="0.1.26-beta"
+PROXMARCHY_VERSION="0.1.27-beta"
 PROXMARCHY_GIT_SHA="${PROXMARCHY_GIT_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 echo "Proxmarchy omarchy-vm.sh ${PROXMARCHY_VERSION}  (commit: ${PROXMARCHY_GIT_SHA})"
 
@@ -761,9 +761,18 @@ create_vm() {
     qm set "$VMID" -ide3 "${STORAGE}:iso/proxmarchy-fix.iso,media=cdrom" >/dev/null
   fi
 
-  # Boot order: disk first so the empty disk falls through to the ISO on the
-  # first boot. After install, the VM boots straight from disk.
-  qm set "$VMID" -boot "order=scsi0;ide2" >/dev/null
+  # Boot order: ISO first, disk second.
+  #   Earlier we tried `order=scsi0;ide2` (disk first, ISO second) on the
+  #   theory that the empty disk would fail and the firmware would fall
+  #   through to the ISO. OVMF/UEFI doesn't reliably do that — on a
+  #   fresh VM with an empty scsi0, the firmware often just gives up
+  #   and the VM never tries ide2, so the ISO installer never boots.
+  #   Putting the ISO first is what community-scripts does and it's
+  #   the only reliable way to get a first-boot into the installer on
+  #   OVMF. After install, the user detaches ide2 (see the "Cleanup
+  #   after install" block in next-steps) and the firmware falls
+  #   through to scsi0.
+  qm set "$VMID" -boot "order=ide2;scsi0" >/dev/null
 
   msg_ok "Created Omarchy VM ${BL}(${HN})${CL}"
 }

@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.27-beta] — 2026-08-29
+
+### Fixed
+- **Omarchy ISO installer not booting on a fresh VM.** The boot
+  order was `scsi0;ide2` (disk first, ISO second), on the theory
+  that an empty scsi0 would fail and OVMF would fall through to
+  the ISO. OVMF/UEFI doesn't reliably do that — on a fresh VM
+  with an empty disk, the firmware often just gives up after
+  scsi0 fails, the VM never tries ide2, and the ISO installer
+  never runs. The VM would either sit at a "no bootable device"
+  prompt or, on hosts with a slightly more permissive firmware,
+  silently try PXE.
+
+  Changed boot order to `ide2;scsi0` (ISO first, disk second).
+  This matches what community-scripts does and is the only
+  reliable way to get a first-boot into the Omarchy installer
+  on OVMF. After install, the user detaches ide2 (the
+  `qm set ... -delete ide2` command in the next-steps "Cleanup
+  after install" block), and the firmware falls through to
+  scsi0 on subsequent boots.
+
+[0.1.27-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.27-beta
+
 ## [0.1.26-beta] — 2026-08-29
 
 ### Fixed
