@@ -27,7 +27,7 @@ set -eEo pipefail
 #   bash -c "$(curl -fsSL '.../omarchy-vm.sh?nocache='$(date +%s))"
 # The first line of the script's runtime output should always be:
 #   "Proxmarchy omarchy-vm.sh v0.X.Y-beta  (commit: <short SHA>)"
-PROXMARCHY_VERSION="0.1.21-beta"
+PROXMARCHY_VERSION="0.1.22-beta"
 PROXMARCHY_GIT_SHA="${PROXMARCHY_GIT_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 echo "Proxmarchy omarchy-vm.sh ${PROXMARCHY_VERSION}  (commit: ${PROXMARCHY_GIT_SHA})"
 
@@ -731,10 +731,16 @@ create_vm() {
   # To opt back into 3D, run on the Proxmox host:
   #     modprobe udmabuf
   #     qm stop <vmid>
-  #     qm set <vmid> -args '-display none -device virtio-gpu,blob=true,max_outputs=1 ...'
+  #     qm set <vmid> -args '-device virtio-gpu,blob=true,max_outputs=1 ...'
   #     qm start <vmid>
   # (For Vulkan passthrough, additionally add ,venus=true and
   #  ensure your QEMU is ≥ 9.0.)
+  # Note: do NOT pass `-display none` here. Proxmox's qemu-server
+  # parses the args string and reflects `-display ...` into the VM
+  # config's `display:` property. Setting `display: none` kills the
+  # VNC server the Proxmox wrapper would otherwise start, and noVNC
+  # then can't connect. Proxmox picks the right display backend
+  # itself based on the VM config — just leave it alone.
   # Note on the HDA args:
   #   -audio driver=none                       — tell QEMU which audio
   #     backend to use for any hda-* device on the host. `none` means
@@ -753,7 +759,7 @@ create_vm() {
   #     `hda-duplex` (NOT `intel-hda-duplex` — that's wrong and QEMU
   #     errors with "'intel-hda-duplex' is not a valid device model
   #     name" on qm start).
-  qm set "$VMID" -args "-audio driver=none -display none -device virtio-gpu,max_outputs=1 -device ich9-intel-hda,id=sound0,bus=pci.0,addr=0x18 -device hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0" >/dev/null
+  qm set "$VMID" -args "-audio driver=none -device virtio-gpu,max_outputs=1 -device ich9-intel-hda,id=sound0,bus=pci.0,addr=0x18 -device hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0" >/dev/null
 
   # ── Performance ────────────────────────────────────────────────────────
   # Disable memory ballooning. The default balloon device causes memory

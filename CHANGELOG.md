@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.22-beta] — 2026-08-29
+
+### Fixed
+- **noVNC `failed to connect to server` after the audio fix.** The
+  root cause: the QEMU args passed to `qm set ... -args` included
+  `-display none`. Proxmox's qemu-server parses the args string and
+  reflects `-display ...` into the VM config's `display:` property,
+  so the VM ended up with `display: none` in its config — which
+  tells Proxmox not to start a VNC server for the VM at all. noVNC
+  then had nothing to connect to.
+
+  Removed `-display none` from the args. Proxmox's qemu-server
+  picks the right display backend itself based on the VM config
+  (defaults to VNC), and we never needed to override it. Source
+  comment updated with a "do NOT re-add `-display none`" warning so
+  the next person doesn't make the same mistake. The "opt into 3D"
+  snippet in the source comment was also updated to drop the
+  `-display none` part.
+
+[0.1.22-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.22-beta
+
 ## [0.1.21-beta] — 2026-08-28
 
 ### Fixed
