@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6-beta] — 2026-08-28
+
+### Changed
+- **Removed the cidata / unattended install option.** The end user
+  always follows the Omarchy wizard in the Proxmox console now
+  (keyboard → user → disk → confirm). This drops ~140 lines of
+  related code: the `build_cidata` function, the `UNATTENDED`
+  toggle, the `ide3` cidata attach, the cidata upload call, the
+  cidata cleanup branch, and the `genisoimage` dependency. The
+  resulting script is simpler, more predictable, and matches the
+  out-of-the-box `archlinux-vm.sh` community-scripts pattern
+  (one ISO, one wizard). Anyone who wants unattended can still do
+  it manually with the official `omarchy.org/manual/unattended-installs/`
+  recipe.
+
+[0.1.6-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.6-beta
+
 ## [0.1.5-beta] — 2026-08-28
 
 ### Fixed

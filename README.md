@@ -1,50 +1,58 @@
 # Proxmarchy — Omarchy on Proxmox, one-liner
 
 [![Status: Beta](https://img.shields.io/badge/status-beta-orange.svg)](#status)
-[![Version](https://img.shields.io/badge/version-0.1.0--beta-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-0.1.6--beta-blue.svg)](VERSION)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-Two scripts, both end up with a full **Omarchy** VM that updates itself with
-`omarchy update` (which `git pull`s the official `basecamp/omarchy` repo +
-refreshes the Omarchy pacman mirror).
+A Proxmox-host one-liner that creates a UEFI / Q35 / virtio-gpu VM and boots
+the official Omarchy ISO. The end user follows the **Omarchy install
+wizard** in the Proxmox console (keyboard → user → disk → confirm) to
+install the OS. Once installed, the VM is fully updatable from inside
+itself with `omarchy update` (which `git pull`s the official
+`basecamp/omarchy` repo and refreshes the Omarchy pacman mirror).
 
 | File | Where it runs | What it does |
 |---|---|---|
-| `omarchy-vm.sh` | **Proxmox host shell** (root) | Downloads the latest official Omarchy ISO from `omarchy.org` at run time, builds a `cidata` (cloud-init NoCloud) drive for unattended install, and creates a UEFI / Q35 / virtio-gpu Proxmox VM. |
-| `omarchy-in-vm.sh` | Inside a plain Arch VM (sudoer) | Installs the missing bits and runs the official `omarchy.org/install` (which clones `github.com/basecamp/omarchy`). |
+| `omarchy-vm.sh` | **Proxmox host shell** (root) | Downloads the latest official Omarchy ISO from `omarchy.org` at run time, creates a UEFI / Q35 / virtio-gpu Proxmox VM, attaches the ISO, starts the VM. The user follows the Omarchy wizard in the console. |
+| `omarchy-in-vm.sh` | Inside a plain Arch VM (sudoer) | Installs the missing bits and runs the official `omarchy.org/install` (which clones `github.com/basecamp/omarchy`). Useful for converting an existing plain Arch VM. |
 
 ## Status
 
-This is the **first public beta** (`v0.1.0-beta`). The script has been
-syntax-checked and the storage.cfg parser is unit-tested against a
-realistic Proxmox config, but it has not been run end-to-end on a live
-Proxmox node from this exact repo yet. Issues and PRs welcome.
+This is a public beta line. Issues and PRs welcome.
 
 ---
 
 ## The one-liner (Proxmox host)
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/jj19/proxmarchy/main/omarchy-vm.sh)"
+bash -c "$(curl -fsSL 'https://raw.githubusercontent.com/jj19/proxmarchy/main/omarchy-vm.sh?nocache='$(date +%s))"
 ```
 
-…or with `wget`:
+The `?nocache=$(date +%s)` query string is a cache-buster — it forces a
+fresh fetch of the script from GitHub, so any local HTTP proxy or DNS
+caching layer can't serve you a stale version.
+
+If you'd rather download to a file and inspect before running:
 
 ```bash
-bash -c "$(wget -qO- https://raw.githubusercontent.com/jj19/proxmarchy/main/omarchy-vm.sh)"
+URL="https://raw.githubusercontent.com/jj19/proxmarchy/main/omarchy-vm.sh?nocache=$(date +%s)"
+curl -fsSL "$URL" -o /tmp/omarchy-vm.sh
+less /tmp/omarchy-vm.sh
+bash /tmp/omarchy-vm.sh
 ```
 
 Run from the **Proxmox node shell** (Datacenter → Node → Shell), as root,
-on Proxmox VE 8.x or 9.0–9.2. The script will:
+on Proxmox VE 8.x or 9.x. The script will:
 
 1. Ask Default / Advanced settings (VMID, hostname, cores, RAM, disk,
-   bridge, MAC, install mode, start-when-done).
-2. Ask which Proxmox storage pool to use for the ISO and the disk.
-3. Scrape `https://omarchy.org/` for the **current** ISO link and download
-   it into that storage pool.
-4. If unattended, prompt for a Linux user / password / hostname / timezone /
-   keyboard / optional SSH key, and build a `cidata` ISO.
-5. `qm create` the VM with the Omarchy-recommended settings:
+   bridge, MAC, start-when-done).
+2. Ask which Proxmox storage pool to use for the ISO (and, if needed, a
+   separate one for the VM disk — PVE 9 defaults to `local` for ISO and
+   `local-lvm` for images).
+3. Scrape `https://omarchy.org/` for the **current** ISO link, reuse it
+   if it's already in your Proxmox storage, otherwise download + copy
+   it in.
+4. `qm create` the VM with the Omarchy-recommended settings:
    - UEFI (OVMF), `pre-enrolled-keys=0` (no Secure Boot — `limine` boot)
    - `q35` machine
    - `cpu host`, 4 cores, 8 GiB RAM (defaults; configurable in Advanced)
@@ -52,10 +60,12 @@ on Proxmox VE 8.x or 9.0–9.2. The script will:
    - `scsihw virtio-scsi-single`, virtio NIC
    - `serial0 socket` for Proxmox xterm.js console
    - 100 GiB virtio-scsi disk (default)
-6. Attach the Omarchy ISO (`ide2`) and the `cidata` ISO (`ide3`).
-7. Set `boot order=scsi0;ide2` — empty disk falls through to the ISO on
+5. Attach the Omarchy ISO on `ide2`.
+6. Set `boot order=scsi0;ide2` — empty disk falls through to the ISO on
    first boot, then boots from disk after install.
-8. Optionally start the VM.
+7. Start the VM.
+8. Print next-step instructions. (No ISO upload / cidata / unattended
+   stuff to clean up afterwards.)
 
 ### Defaults you can change
 
@@ -67,28 +77,43 @@ on Proxmox VE 8.x or 9.0–9.2. The script will:
 | RAM | 8192 MiB | minimum 4096 enforced |
 | Disk | 100 GiB | minimum 64 enforced |
 | Bridge | `vmbr0` | |
-| Install mode | unattended (cidata) | toggleable in Advanced |
+| Install mode | **Omarchy wizard** (in the Proxmox console) | no unattended/cidata option — keep it simple |
 | Start when done | yes | |
 | **Remove Omarchy ISO after install** | **yes** | toggleable in Advanced; the ISO is 6 GB, so this saves real space. The VM doesn't need it after install (boot order is `scsi0;ide2`, disk wins). |
 
 ### Cleanup behavior
 
-The script does cleanup that goes a step further than `community-scripts/ProxmoxVE`
-(those typically leave the imported disk image in storage for the user to
-remove manually):
-
-- **Always**: the `cidata` ISO is detached from the VM and removed from
-  Proxmox storage after install — it was a one-shot consumed on the first
-  boot.
-- **Always**: the script's own `TEMP_DIR` (the originally downloaded files)
-  is wiped on exit via a `trap cleanup EXIT`.
+- **Always**: the script's own `TEMP_DIR` (the originally downloaded
+  file) is wiped on exit via a `trap cleanup EXIT`.
 - **Default yes, toggleable in Advanced**: the 6 GB Omarchy ISO is also
-  detached and removed from Proxmox storage. Say "No" only if you want to
-  keep it to re-install or build another Omarchy VM later.
+  detached and removed from Proxmox storage. Say "No" only if you want
+  to keep it to re-install or build another Omarchy VM later.
 
 If you keep the ISO, you'll find it at `<storage path>/template/iso/`
 (usually `/var/lib/vz/template/iso/omarchy-X.Y.Z.iso`) and can detach it
 manually later with `qm set <vmid> -delete ide2`.
+
+---
+
+## What the end user does after the one-liner
+
+The script ends with:
+
+```
+  💡  Next steps
+  • Open the Proxmox console for VM <id> (noVNC or xterm.js).
+  • The VM boots from the Omarchy ISO — walk through the wizard in the
+    console: keyboard → user → disk → confirm. Installation finishes in
+    a few minutes; on the next reboot the VM boots from disk into the
+    Hyprland desktop.
+```
+
+The user follows the wizard, picks a username/password/hostname/timezone,
+confirms the disk, and on the next reboot lands on the Hyprland
+desktop. They can then keep the VM current with:
+
+- `omarchy update` (terminal)
+- **Super + Alt + Space → Update → Omarchy** (menu)
 
 ---
 
@@ -105,9 +130,10 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/jj19/proxmarchy/main/oma
 This:
 
 1. Installs `git`, `gum`, `base-devel` (Omarchy's installer needs them).
-2. Runs the **official** upstream installer: `omarchy.org/install`, which is
-   the project's own `boot.sh` — it clones `github.com/basecamp/omarchy`
-   into `~/.local/share/omarchy` and runs the full `install.sh` from there.
+2. Runs the **official** upstream installer: `omarchy.org/install`, which
+   is the project's own `boot.sh` — it clones `github.com/basecamp/omarchy`
+   into `~/.local/share/omarchy` and runs the full `install.sh` from
+   there.
 3. After the first reboot, `omarchy update` is the maintenance command.
 
 To pin to a different release channel:
@@ -122,40 +148,40 @@ OMARCHY_REF=dev bash -c "$(curl -fsSL https://omarchy.org/install)"
 
 ## Why the resulting VM stays up to date
 
-Omarchy is not a frozen image. The official `install.sh` (which the script
-pulls from `github.com/basecamp/omarchy`) sets up four update channels
-through `~/.local/share/omarchy`:
+Omarchy is not a frozen image. The official `install.sh` (which the ISO
+wizard runs from `github.com/basecamp/omarchy`) sets up four update
+channels through `~/.local/share/omarchy`:
 
 - `~/.local/share/omarchy` — a git clone of the Omarchy repo. `omarchy
-  update` runs `git -C ~/.local/share/omarchy pull --autostash` to pull
-  the latest scripts, themes, defaults, migrations, and `omarchy-*` CLI
-  commands.
+  update` runs `git -C ~/.local/share/omarchy pull --autostash` to
+  pull the latest scripts, themes, defaults, migrations, and
+  `omarchy-*` CLI commands.
 - `/etc/pacman.d/mirrorlist` — points at the Omarchy Arch mirror
   (`https://stable-mirror.omarchy.org/$repo/os/$arch`). `omarchy-update
   system-pkgs` runs `pacman -Syu` against it, so Omarchy-specific
   packages track upstream releases.
-- The Omarchy package repo registered with `pacman` — Omarchy itself is
-  shipped as regular pacman packages, so a `pacman -Syu` picks up new
-  Omarchy releases.
+- The Omarchy package repo registered with `pacman` — Omarchy itself
+  is shipped as regular pacman packages, so a `pacman -Syu` picks up
+  new Omarchy releases.
 - `~/.local/share/omarchy/migrations/` — `omarchy update` runs any
-  pending migration scripts to keep your config in sync with the latest
-  release.
+  pending migration scripts to keep your config in sync with the
+  latest release.
 
 So the same `omarchy update` (or the **Update → Omarchy** entry in the
-Omarchy menu) does **both** "refresh the Omarchy scripts from the official
-repo" and "pull the latest Omarchy and Arch packages" — that's how the
-in-VM experience stays current without rebuilding the VM.
+Omarchy menu) does **both** "refresh the Omarchy scripts from the
+official repo" and "pull the latest Omarchy and Arch packages" — that's
+how the in-VM experience stays current without rebuilding the VM.
 
 ---
 
 ## Why "stay up to date when installing" matters here
 
-The Proxmox-side script **always** scrapes `https://omarchy.org/` for the
-ISO link at run time, so you get whatever the team just released. The
-in-VM `omarchy.org/install` URL points at the same `boot.sh` on the
-`master` branch, which clones the same `basecamp/omarchy` repo your
-future `omarchy update` will pull from. There is no pinned, stale
-mirror anywhere in the chain.
+The Proxmox-side script **always** scrapes `https://omarchy.org/` for
+the ISO link at run time, so you get whatever the team just released.
+The in-VM `omarchy.org/install` URL points at the same `boot.sh` on
+the `master` branch, which clones the same `basecamp/omarchy` repo
+your future `omarchy update` will pull from. There is no pinned,
+stale mirror anywhere in the chain.
 
 ---
 
@@ -165,27 +191,29 @@ mirror anywhere in the chain.
 omarchy/
 ├── omarchy-vm.sh        # Proxmox-host one-liner (this is the main one)
 ├── omarchy-in-vm.sh     # in-VM one-liner (Arch → Omarchy)
-└── README.md            # this file
+├── README.md            # this file
+├── LICENSE              # MIT
+├── CHANGELOG.md         # per-version notes
+└── VERSION              # current version
 ```
 
 ---
 
 ## Tested reference settings (manual)
 
-For users who prefer to do it by hand, the official Proxmox recipe is:
+For users who prefer to do it by hand, the Proxmox recipe is:
 
 ```bash
 qm create 101 --name my-omarchy \
   --bios ovmf --machine q35 --cpu host --cores 4 --memory 8192 \
   --ostype l26 --scsihw virtio-scsi-single \
   --efidisk0 local-lvm:0,efitype=4m,pre-enrolled-keys=0 \
-  --scsi0 local-lvm:40,discard=on,iothread=1 \
+  --scsi0 local-lvm:100,discard=on,iothread=1 \
   --net0 virtio,bridge=vmbr0 --vga virtio --serial0 socket \
   --ide2 local:iso/omarchy.iso,media=cdrom \
-  --ide3 local:iso/cidata.iso,media=cdrom \
   --boot order='scsi0;ide2'
 qm start 101
 ```
 
-(The script automates exactly this, plus the ISO download, cidata build,
-and the `omarchy.org`-driven update story.)
+(The script automates exactly this, plus the ISO download and the
+`omarchy.org`-driven update story.)

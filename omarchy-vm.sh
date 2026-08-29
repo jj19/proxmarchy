@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
 # omarchy-vm.sh — Proxmox helper-script style installer for Omarchy
 #
-# Pulls the LATEST official Omarchy ISO from omarchy.org at run time, builds
-# a `cidata` (cloud-init NoCloud) drive for fully unattended install using
-# the official `user_configuration.json` / `user_credentials.json` schema
-# documented at https://omarchy.org/manual/unattended-installs/, and
-# creates a UEFI / Q35 / virtio-gpu Proxmox VM that boots the official
-# Omarchy ISO.
+# Pulls the LATEST official Omarchy ISO from omarchy.org at run time and
+# creates a UEFI / Q35 / virtio-gpu Proxmox VM that boots the ISO. The end
+# user follows the Omarchy wizard in the Proxmox console (keyboard → user
+# → disk → confirm) to install the OS.
 #
-# Once the wizard (or cidata) finishes, the resulting VM is a full Omarchy
-# install with `~/.local/share/omarchy` cloned from
+# Once the wizard finishes, the resulting VM is a full Omarchy install
+# with `~/.local/share/omarchy` cloned from
 # https://github.com/basecamp/omarchy — so the standard
 #   omarchy update
 # command (or Super+Alt+Space → Update → Omarchy) keeps it current.
@@ -17,7 +15,7 @@
 # This script is intended to be run on the Proxmox host shell.
 #
 # Usage (host shell):
-#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/<you>/<repo>/main/vm/omarchy-vm.sh)"
+#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/jj19/proxmarchy/main/omarchy-vm.sh)"
 #
 # License: MIT
 set -eEo pipefail
@@ -149,9 +147,9 @@ pve_check() {
 }
 
 require_tools() {
-  for t in qm pvesm whiptail curl openssl genisoimage awk sed numfmt du; do
+  for t in qm pvesm whiptail curl openssl awk sed numfmt du; do
     command -v "$t" >/dev/null 2>&1 || {
-      msg_error "Missing required tool: $t (apt install genisoimage xorriso)"
+      msg_error "Missing required tool: $t"
       exit 1
     }
   done
@@ -199,7 +197,6 @@ default_settings() {
   VLAN=""
   MTU=""
   START_VM="yes"
-  UNATTENDED="yes"
   CLEANUP_ISO="yes"   # remove the 6 GB Omarchy ISO from Proxmox storage after install
   METHOD="default"
   METHOD_DESC="Default"
@@ -211,7 +208,7 @@ default_settings() {
   echo -e "${DISKSIZE}${BOLD}${DGN}Disk: ${BGN}${DISK_SIZE} GiB${CL}"
   echo -e "${BRIDGE}${BOLD}${DGN}Bridge: ${BGN}${BRG}${CL}"
   echo -e "${HOSTNAME}${BOLD}${DGN}Hostname: ${BGN}${HN}${CL}"
-  echo -e "${DEFAULT}${BOLD}${DGN}Install: ${BGN}unattended (cidata) — full Omarchy${CL}"
+  echo -e "${DEFAULT}${BOLD}${DGN}Install: ${BGN}Omarchy wizard (in the Proxmox console)${CL}"
   echo -e "${GATEWAY:-${DEFAULT}}${BOLD}${DGN}Start VM when done: ${BGN}yes${CL}"
   echo -e "${DEFAULT}${BOLD}${DGN}Remove Omarchy ISO from storage after install: ${BGN}yes${CL}  ${YW}(saves ~6 GB)${CL}"
 }
@@ -302,15 +299,8 @@ advanced_settings() {
     echo -e "${MACADDRESS}${BOLD}${DGN}MAC: ${BGN}$MAC${CL}"
   else exit_script; fi
 
-  # Unattended install?
-  if whiptail --backtitle "Proxmox VE Helper Scripts" --title "INSTALL MODE" \
-      --yesno "Use unattended install (cidata, full Omarchy)?" --no-button "Interactive wizard" 10 58; then
-    UNATTENDED="yes"
-    echo -e "${DEFAULT}${BOLD}${DGN}Install: ${BGN}unattended (cidata)${CL}"
-  else
-    UNATTENDED="no"
-    echo -e "${DEFAULT}${BOLD}${DGN}Install: ${BGN}interactive ISO wizard${CL}"
-  fi
+  # Install mode is fixed: end user follows the Omarchy wizard in the
+  # Proxmox console. (No cidata/unattended option — keep it simple.)
 
   # Clean up the Omarchy ISO from Proxmox storage after the VM is built?
   # The ISO is 6 GB; we already have a copy in Proxmox storage, and the VM
@@ -406,7 +396,7 @@ pick_storage() {
     while [[ -z "${STORAGE:+x}" ]]; do
       STORAGE=$(whiptail --backtitle "Proxmox VE Helper Scripts" \
         --title "ISO Storage" --radiolist \
-        "Which storage pool should hold the Omarchy ISO + cidata?\nPick a dir-backed one — script copies the files into it directly." \
+        "Which storage pool should hold the Omarchy ISO?\nPick a dir-backed one — script copies the file into it directly." \
         16 $((MSG_MAX_LENGTH + 23)) 6 \
         "${STORAGE_MENU[@]}" 3>&1 1>&2 2>&3) || exit_script
     done
@@ -471,42 +461,10 @@ pick_disk_storage() {
 }
 
 # ----------------------------------------------------------------------------
-# 4b. Upload an ISO into a Proxmox storage pool
-#
-# Strategy:
-#   1. Read /etc/pve/storage.cfg to find a writable `path` for this storage.
-#   2. If found, copy the file directly into `<path>/template/iso/`.
-#   3. Otherwise (LVM-thin / ZFS / Ceph / etc.) the script refuses with a
-#      clear message: those storage types don't expose a writable ISO dir,
-#      and uploading via the PVE API needs a real user ticket. The user
-#      should pick a dir-backed storage (e.g. `local`) for the ISO + cidata.
+# 4b. Resolve the on-disk path of a Proxmox storage's ISO directory.
+#     Returns "<path>/template/iso" for dir-backed storages, or empty if
+#     the storage has no local filesystem path (LVM-thin / ZFS / Ceph / etc.).
 # ----------------------------------------------------------------------------
-upload_iso_to_storage() {
-  local SRC_FILE="$1"      # path on disk
-  local DEST_NAME="$2"     # filename inside Proxmox storage
-  local STORAGE="$3"       # Proxmox storage ID
-
-  local ISO_DIR
-  ISO_DIR=$(storage_iso_dir "$STORAGE")
-
-  if [[ -n "$ISO_DIR" ]]; then
-    mkdir -p "${ISO_DIR}/template/iso"
-    cp -f "$SRC_FILE" "${ISO_DIR}/template/iso/${DEST_NAME}"
-    msg_ok "Stored ISO in ${BL}${ISO_DIR}/template/iso/${DEST_NAME}${CL}"
-    return 0
-  fi
-
-  msg_error "Storage '${STORAGE}' has no local path (LVM-thin / ZFS / Ceph / etc.)."
-  msg_error "Pick a dir-backed storage for the ISOs (typical: 'local'), or upload"
-  msg_error "  ${DEST_NAME}"
-  msg_error "to the Proxmox UI (Datacenter → Node → Storage → 'local' → ISO Images → Upload)"
-  msg_error "and re-run this script."
-  exit 1
-}
-
-# Resolve the on-disk path of a Proxmox storage's ISO directory.
-# Returns "<path>/template/iso" for dir-backed storages, or empty if the
-# storage has no local filesystem path (LVM-thin / ZFS / Ceph / etc.).
 storage_iso_dir() {
   local st="$1"
   local base
@@ -590,103 +548,9 @@ download_omarchy_iso() {
 }
 
 # ----------------------------------------------------------------------------
-# 6. Build a `cidata` (cloud-init NoCloud) drive for unattended install
-#    Per https://omarchy.org/manual/unattended-installs/
+# 6. (no cidata / unattended option — the end user follows the Omarchy
+#    ISO wizard in the Proxmox console)
 # ----------------------------------------------------------------------------
-build_cidata() {
-  local CIDATA_DIR
-  CIDATA_DIR="$(mktemp -d)"
-
-  # Username
-  local USERNAME
-  USERNAME=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "OMARCHY USER" \
-    --inputbox "Create a Linux user (sudoer, omarchy owner)" 8 58 "omarchy" \
-    --cancel-button Exit-Script 3>&1 1>&2 2>&3) || exit_script
-  [[ -z "$USERNAME" ]] && USERNAME="omarchy"
-
-  # Password (and confirmation)
-  local PASSWORD PASSWORD2
-  while true; do
-    PASSWORD=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "OMARCHY PASSWORD" \
-      --passwordbox "Password for '$USERNAME' (used for sudo / login)" 9 58 \
-      --cancel-button Exit-Script 3>&1 1>&2 2>&3) || exit_script
-    PASSWORD2=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "OMARCHY PASSWORD" \
-      --passwordbox "Confirm password" 9 58 \
-      --cancel-button Exit-Script 3>&1 1>&2 2>&3) || exit_script
-    [[ -n "$PASSWORD" && "$PASSWORD" == "$PASSWORD2" ]] && break
-    whiptail --msgbox "Passwords don't match (or empty). Try again." 8 58
-  done
-
-  # Hostname (default already $HN from earlier, but allow override)
-  HN=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "HOSTNAME" \
-    --inputbox "VM / system hostname" 8 58 "$HN" \
-    --cancel-button Exit-Script 3>&1 1>&2 2>&3) || exit_script
-  [[ -z "$HN" ]] && HN="omarchy"
-
-  # Timezone
-  local TIMEZONE
-  TIMEZONE=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "TIMEZONE" \
-    --inputbox "Linux timezone (e.g. America/Los_Angeles, Europe/Berlin)" 8 58 \
-    "${TIMEZONE:-$(timedatectl show -p Timezone --value 2>/dev/null || echo UTC)}" \
-    --cancel-button Exit-Script 3>&1 1>&2 2>&3) || exit_script
-  [[ -z "$TIMEZONE" ]] && TIMEZONE="UTC"
-
-  # Keyboard layout
-  local KEYBOARD
-  KEYBOARD=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "KEYBOARD" \
-    --inputbox "Console keymap (e.g. us, uk, de, fr, es)" 8 58 "us" \
-    --cancel-button Exit-Script 3>&1 1>&2 2>&3) || exit_script
-  [[ -z "$KEYBOARD" ]] && KEYBOARD="us"
-
-  # Optional Git name/email for Omarchy's default git config
-  local FULL_NAME EMAIL
-  if whiptail --yesno "Configure git author (full name + email) now?" 10 58; then
-    FULL_NAME=$(whiptail --inputbox "Git full name" 8 58 "$FULL_NAME" \
-      --cancel-button Skip 3>&1 1>&2 2>&3) || FULL_NAME=""
-    EMAIL=$(whiptail --inputbox "Git email" 8 58 "$EMAIL" \
-      --cancel-button Skip 3>&1 1>&2 2>&3) || EMAIL=""
-  fi
-
-  # Optional SSH public key (so the VM is SSH-ready right after install)
-  local AUTHORIZED_KEYS_CONTENT=""
-  if whiptail --yesno "Drop in an SSH public key for '$USERNAME' now?\n(Yes = paste it; No = set it up later inside the VM.)" 12 62; then
-    AUTHORIZED_KEYS_CONTENT=$(whiptail --inputbox \
-      "Paste one ssh-ed25519 / ssh-rsa public key (single line)" 10 78 \
-      --cancel-button Skip 3>&1 1>&2 2>&3) || AUTHORIZED_KEYS_CONTENT=""
-  fi
-
-  # ---- Write cidata files (verbatim schema from omarchy.org/manual) ----
-  local PW_HASH
-  PW_HASH=$(openssl passwd -6 "$PASSWORD")
-
-  cat > "$CIDATA_DIR/user_configuration.json" <<EOF
-{
-  "disk": "/dev/vda",
-  "hostname": "$HN",
-  "timezone": "$TIMEZONE",
-  "keyboard": "$KEYBOARD"
-}
-EOF
-
-  cat > "$CIDATA_DIR/user_credentials.json" <<EOF
-{
-  "username": "$USERNAME",
-  "password_hash": "$PW_HASH"
-}
-EOF
-
-  if [[ -n "$FULL_NAME" ]]; then echo "$FULL_NAME" > "$CIDATA_DIR/user_full_name.txt"; fi
-  if [[ -n "$EMAIL" ]]; then echo "$EMAIL" > "$CIDATA_DIR/user_email_address.txt"; fi
-  if [[ -n "$AUTHORIZED_KEYS_CONTENT" ]]; then
-    printf '%s\n' "$AUTHORIZED_KEYS_CONTENT" > "$CIDATA_DIR/authorized_keys"
-  fi
-
-  CIDATA_ISO="cidata.iso"
-  msg_info "Building cidata drive (label=cidata)"
-  # Label MUST be "cidata" for Omarchy's NoCloud auto-detect
-  (cd "$CIDATA_DIR" && genisoimage -output "../$CIDATA_ISO" -volid cidata -joliet -rock ./* >/dev/null)
-  msg_ok "Built cidata drive: ${BL}${CIDATA_ISO}${CL}"
-}
 
 # ----------------------------------------------------------------------------
 # 7. Create the VM
@@ -720,12 +584,9 @@ create_vm() {
   # Main OS disk (will be filled by the ISO installer)
   qm set "$VMID" -scsi0 "${DISK_STORAGE}:${VMID},iothread=1,discard=on,ssd=1,size=${DISK_SIZE}G" >/dev/null
 
-  # Attach the official Omarchy ISO
+  # Attach the official Omarchy ISO (the user follows its wizard in the
+  # Proxmox console — no cidata / unattended option)
   qm set "$VMID" -ide2 "${STORAGE}:iso/${ISO_FILE},media=cdrom" >/dev/null
-  # Attach the cidata drive (unattended install) if we built one
-  if [[ -n "${CIDATA_ISO:-}" && -f "$TEMP_DIR/$CIDATA_ISO" ]]; then
-    qm set "$VMID" -ide3 "${STORAGE}:iso/${CIDATA_ISO},media=cdrom" >/dev/null
-  fi
 
   # Boot order: disk first so the empty disk falls through to the ISO on the
   # first boot. After install, the VM boots straight from disk.
@@ -744,8 +605,6 @@ start_vm() {
 
 # ----------------------------------------------------------------------------
 # 7b. Post-install cleanup
-#   - Always drop the cidata ISO from Proxmox storage (one-shot, only used on
-#     the first boot; detaching it from the VM is also fine but we do both).
 #   - If the user opted in, also drop the Omarchy ISO to reclaim ~6 GB.
 #   - The TEMP_DIR was already cleaned up by the EXIT trap, so we only deal
 #     with the copies that ended up in the Proxmox storage pool.
@@ -761,17 +620,6 @@ post_install_cleanup() {
     return 0
   fi
   local ISO_TARGET_DIR="${ISO_DIR}/template/iso"
-
-  # Always: remove the cidata drive from the VM and from storage.
-  if [[ -n "${CIDATA_ISO:-}" ]]; then
-    if qm set "$VMID" -delete ide3 >/dev/null 2>&1; then
-      msg_ok "Detached cidata drive from VM"
-    fi
-    if [[ -f "$ISO_TARGET_DIR/$CIDATA_ISO" ]]; then
-      rm -f "$ISO_TARGET_DIR/$CIDATA_ISO"
-      msg_ok "Removed cidata ISO from Proxmox storage"
-    fi
-  fi
 
   # Optional: remove the 6 GB Omarchy ISO too.
   if [[ "$CLEANUP_ISO" == "yes" ]]; then
@@ -807,20 +655,6 @@ main() {
   pick_disk_storage
   download_omarchy_iso
 
-  if [[ "$UNATTENDED" == "yes" ]]; then
-    build_cidata
-  else
-    CIDATA_ISO=""
-    msg_info "Skipping cidata — you'll be walked through the ISO wizard in the VM console"
-  fi
-
-  # The Omarchy ISO is already in Proxmox storage at this point
-  # (download_omarchy_iso handled the reuse-or-download+copy case).
-  # Only the cidata ISO (always built fresh in TEMP_DIR) needs an upload.
-  if [[ -n "${CIDATA_ISO:-}" && -f "$TEMP_DIR/$CIDATA_ISO" ]]; then
-    upload_iso_to_storage "$TEMP_DIR/$CIDATA_ISO" "$CIDATA_ISO" "$STORAGE"
-  fi
-
   create_vm
   start_vm
   post_install_cleanup
@@ -830,24 +664,20 @@ main() {
   echo
   if [[ "$CLEANUP_ISO" == "yes" ]]; then
     echo -e "${INFO}${BOLD}Cleanup${CL}"
-    echo -e "  • cidata ISO: ${YW}detached from VM and removed from Proxmox storage${CL}"
     echo -e "  • Omarchy ISO: ${YW}detached from VM and removed from Proxmox storage (~6 GB freed)${CL}"
-    echo -e "  • The downloaded copies in the script's TEMP_DIR were already wiped on exit"
+    echo -e "  • The downloaded copy in the script's TEMP_DIR was already wiped on exit"
     echo
   else
     echo -e "${INFO}${BOLD}Cleanup${CL}"
-    echo -e "  • cidata ISO: ${YW}detached from VM and removed from Proxmox storage${CL}"
     echo -e "  • Omarchy ISO: ${YW}KEPT in Proxmox storage (re-attach later if you want to re-install)${CL}"
     echo
   fi
   echo -e "${INFO}${BOLD}Next steps${CL}"
   echo -e "  • Open the Proxmox console for VM ${BOLD}${VMID}${CL} (noVNC or xterm.js)."
-  if [[ "$UNATTENDED" == "yes" ]]; then
-    echo -e "  • The first boot reads cidata and installs silently; you'll land on the"
-    echo -e "    Hyprland desktop when it's done (~5–10 min on fast storage)."
-  else
-    echo -e "  • Walk through the ISO wizard: keyboard → user → disk → confirm."
-  fi
+  echo -e "  • The VM boots from the Omarchy ISO — walk through the wizard in the"
+  echo -e "    console: keyboard → user → disk → confirm. Installation finishes in"
+  echo -e "    a few minutes; on the next reboot the VM boots from disk into the"
+  echo -e "    Hyprland desktop."
   echo -e "  • Inside the VM, keep it current with any of:"
   echo -e "      ${YW}omarchy update${CL}                  (terminal)"
   echo -e "      ${YW}Super + Alt + Space → Update → Omarchy${CL}  (menu)"
