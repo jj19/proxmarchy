@@ -20,8 +20,7 @@
 #   - curl
 #   - The Omarchy ISO (auto-downloaded to /tmp if not present)
 #
-# This script must be run as a regular user — it uses sudo internally
-# for the mount/loop operations.
+# This script runs as root OR as a regular user with sudo; SUDO is set in preflight.
 
 set -eEuo pipefail
 
@@ -41,19 +40,29 @@ ok()   { printf '%s%s%s\n' "$GN" "  ✔ $*" "$CL"; }
 warn() { printf '%s%s%s\n' "$YW" "  ⚠ $*" "$CL" >&2; }
 die()  { printf '%s%s%s\n' "$RD" "  ✖ $*" "$CL" >&2; exit 1; }
 
+# ── Privilege escalation ─────────────────────────────────────────────
+# Run the build as root if you can (common on Proxmox). If you're
+# already root, we just skip sudo. If you're not root, we use sudo
+# for the mount/loop operations and check that it's available.
+if [[ $EUID -eq 0 ]]; then
+  SUDO=""
+  ok "Running as root (no sudo needed)"
+else
+  if ! command -v sudo >/dev/null 2>&1; then
+    die "Not running as root and 'sudo' is not installed. Either run as root or 'apt install sudo' first."
+  fi
+  SUDO="sudo"
+fi
+
 # ── 0. Preflight ───────────────────────────────────────────────────────
 preflight() {
   note "${BL}── Preflight ──${CL}"
-  for tool in xorriso unsquashfs mksquashfs curl sudo; do
+  for tool in xorriso unsquashfs mksquashfs curl; do
     if ! command -v "$tool" >/dev/null 2>&1; then
-      die "Missing tool: $tool. Install with: sudo apt install xorriso squashfs-tools curl sudo"
+      die "Missing tool: $tool. Install with: apt install xorriso squashfs-tools curl"
     fi
     ok "$tool"
   done
-
-  if [[ $EUID -eq 0 ]]; then
-    die "Don't run this as root — it uses sudo internally for mount/loop ops."
-  fi
 
   if [[ ! -d "$CUSTOM_DIR" ]]; then
     die "Customizations dir not found: $CUSTOM_DIR"
@@ -124,16 +133,16 @@ stage_workdir() {
 # ── 3. Mount + extract the original ISO ───────────────────────────────
 extract_iso() {
   note "${BL}── Mounting + extracting ISO ──${CL}"
-  if ! sudo mount -o loop,ro "$ORIGINAL_ISO" "$WORK_DIR/mnt"; then
+  if ! ${SUDO} mount -o loop,ro "$ORIGINAL_ISO" "$WORK_DIR/mnt"; then
     die "Failed to mount $ORIGINAL_ISO at $WORK_DIR/mnt"
   fi
   ok "Mounted"
 
-  if ! sudo cp -a "$WORK_DIR/mnt/." "$WORK_DIR/extract/"; then
-    sudo umount "$WORK_DIR/mnt" || true
+  if ! ${SUDO} cp -a "$WORK_DIR/mnt/." "$WORK_DIR/extract/"; then
+    ${SUDO} umount "$WORK_DIR/mnt" || true
     die "Failed to copy ISO contents"
   fi
-  sudo umount "$WORK_DIR/mnt"
+  ${SUDO} umount "$WORK_DIR/mnt"
   ok "Copied ISO contents to extract/"
 
   # The archiso squashfs. Modern archiso puts it at arch/x86_64/airootfs.sfs;
@@ -145,7 +154,7 @@ extract_iso() {
   fi
   ok "Found airootfs.sfs at: ${sfs#$WORK_DIR/extract/}"
 
-  if ! sudo unsquashfs -d "$WORK_DIR/airootfs" -no-progress "$sfs"; then
+  if ! ${SUDO} unsquashfs -d "$WORK_DIR/airootfs" -no-progress "$sfs"; then
     die "Failed to extract airootfs.sfs"
   fi
   ok "Extracted airootfs to airootfs/"
@@ -160,13 +169,13 @@ inject_customizations() {
   # The detect service
   local svc_src="$CUSTOM_DIR/etc/systemd/system/proxmarchy-install-detect.service"
   local svc_dst="$WORK_DIR/airootfs/etc/systemd/system/proxmarchy-install-detect.service"
-  sudo install -D -m 0644 "$svc_src" "$svc_dst"
+  ${SUDO} install -D -m 0644 "$svc_src" "$svc_dst"
   ok "Service file → ${svc_dst#$WORK_DIR/airootfs/}"
 
   # The detect script
   local det_src="$CUSTOM_DIR/usr/local/bin/proxmarchy-install-detect.sh"
   local det_dst="$WORK_DIR/airootfs/usr/local/bin/proxmarchy-install-detect.sh"
-  sudo install -D -m 0755 "$det_src" "$det_dst"
+  ${SUDO} install -D -m 0755 "$det_src" "$det_dst"
   ok "Detect script → ${det_dst#$WORK_DIR/airootfs/}"
 
   # The fix script (sourced from the same repo as omarchy-vm.sh so the
@@ -177,12 +186,12 @@ inject_customizations() {
     die "Missing fix-mac-super-key.sh at $fix_src"
   fi
   local fix_dst="$WORK_DIR/airootfs/opt/proxmarchy/fix-mac-super-key.sh"
-  sudo install -D -m 0755 "$fix_src" "$fix_dst"
+  ${SUDO} install -D -m 0755 "$fix_src" "$fix_dst"
   ok "Fix script → ${fix_dst#$WORK_DIR/airootfs/}"
 
   # Enable the service in the live env so it starts on boot
   local want_dst="$WORK_DIR/airootfs/etc/systemd/system/multi-user.target.wants/proxmarchy-install-detect.service"
-  sudo ln -sf "../proxmarchy-install-detect.service" "$want_dst"
+  ${SUDO} ln -sf "../proxmarchy-install-detect.service" "$want_dst"
   ok "Service enabled in live env (multi-user.target.wants/)"
   echo
 }
@@ -196,12 +205,12 @@ repack_airootfs() {
   local sfs_name
   sfs_name=$(basename "$sfs")
   # Move the old one out of the way and write a new one in place
-  sudo mv "$sfs" "${sfs}.bak"
-  if ! sudo mksquashfs "$WORK_DIR/airootfs" "$sfs" -comp xz -noappend -no-progress; then
-    sudo mv "${sfs}.bak" "$sfs"
+  ${SUDO} mv "$sfs" "${sfs}.bak"
+  if ! ${SUDO} mksquashfs "$WORK_DIR/airootfs" "$sfs" -comp xz -noappend -no-progress; then
+    ${SUDO} mv "${sfs}.bak" "$sfs"
     die "mksquashfs failed"
   fi
-  sudo rm -f "${sfs}.bak"
+  ${SUDO} rm -f "${sfs}.bak"
   ok "Repacked $(du -h "$sfs" | awk '{print $1}')"
   echo
 }
@@ -239,12 +248,12 @@ repackage_iso() {
 cleanup() {
   note "${BL}── Cleanup ──${CL}"
   if mountpoint -q "$WORK_DIR/mnt" 2>/dev/null; then
-    sudo umount "$WORK_DIR/mnt" || true
+    ${SUDO} umount "$WORK_DIR/mnt" || true
   fi
   if [[ -n "${KEEP_WORKDIR:-}" ]]; then
     note "  Workdir kept: $WORK_DIR (KEEP_WORKDIR=1)"
   else
-    sudo rm -rf "$WORK_DIR"
+    ${SUDO} rm -rf "$WORK_DIR"
     ok "Removed workdir $WORK_DIR"
   fi
   echo

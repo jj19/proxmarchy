@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.36-beta] — 2026-08-29
+
+### Fixed
+- **`build-custom-iso.sh` preflight required `sudo` even when
+  the user was already root** (the common case on a Proxmox
+  host). The check was unconditional and died with "Missing
+  tool: sudo" before getting to the rest of preflight. Now:
+  detect whether we're running as root, set a `SUDO` variable
+  to either `""` (root) or `"sudo"` (non-root), and use
+  `${SUDO}` everywhere `sudo` was previously hard-coded. The
+  preflight also dropped the "Don't run as root" guard since
+  running as root is now first-class.
+
 ## [0.1.35-beta] — 2026-08-29
 
 ### Added
