@@ -273,26 +273,63 @@ repackage_iso() {
     note "  No isolinux/ — building UEFI-only ISO"
   fi
 
-  # UEFI / efiboot.img (most modern archiso ISOs have this)
-  local efi_img
-  efi_img=$(find "$WORK_DIR/extract" -name 'efiboot.img' -type f 2>/dev/null | head -n1 || true)
-  if [[ -n "$efi_img" ]]; then
-    local rel_efi="${efi_img#$WORK_DIR/extract/}"
-    xorriso_args+=(
-      -eltorito-alt-boot
-      -e "$rel_efi"
-      -no-emul-boot
-    )
-    ok "UEFI boot image: $rel_efi"
+  # UEFI / efiboot.img (most modern archiso ISOs have this).
+  # Prefer the canonical archiso path; fall back to find if it's
+  # somewhere else.
+  local efi_img=""
+  for candidate in \
+      "$WORK_DIR/extract/EFI/archiso/efiboot.img" \
+      "$WORK_DIR/extract/EFI/boot/efiboot.img" \
+      "$WORK_DIR/extract/boot/grub/efiboot.img" \
+    ; do
+    if [[ -f "$candidate" ]]; then
+      efi_img="$candidate"
+      ok "EFI image at canonical path: ${candidate#$WORK_DIR/extract/}"
+      break
+    fi
+  done
+  if [[ -z "$efi_img" ]]; then
+    efi_img=$(find "$WORK_DIR/extract" -name 'efiboot.img' -type f 2>/dev/null | head -n1 || true)
+    if [[ -n "$efi_img" ]]; then
+      warn "Using non-canonical EFI image path: ${efi_img#$WORK_DIR/extract/}"
+    fi
   fi
+  if [[ -z "$efi_img" ]]; then
+    die "No efiboot.img found in the source ISO. The ISO might not be UEFI-bootable."
+  fi
+  local rel_efi="${efi_img#$WORK_DIR/extract/}"
 
-  # GPT basdat is required for UEFI booting off optical media
-  if [[ -n "$efi_img" ]]; then
-    xorriso_args+=(-isohybrid-gpt-basdat)
-  fi
+  # EFI boot — both El Torito (for UEFI firmware reading the catalog)
+  # AND append_partition (for hybrid MBR so the EFI image is also a
+  # partition on the disk-style GPT). The original Omarchy ISO uses
+  # this pattern; without append_partition some UEFI firmwares won't
+  # find the boot image.
+  xorriso_args+=(
+    -e "$rel_efi"
+    -eltorito-alt-boot
+    -no-emul-boot
+    -append_partition 2 0xef "$efi_img"
+    -partition_offset 16
+    -iso_mbr_part_type 0xef
+  )
+  ok "UEFI boot configured: El Torito + append_partition + GPT"
+
+  # GPT partition table (required for modern UEFI to recognize the
+  # ISO as a bootable disk)
+  xorriso_args+=(-isohybrid-gpt-basdat)
 
   if ! xorriso -as mkisofs "${xorriso_args[@]}" "$WORK_DIR/extract" 2>&1 | tail -20; then
     die "xorriso failed (try running with KEEP_WORKDIR=1 to inspect the extracted tree)"
+  fi
+
+  # Verify the boot catalog was actually written. If the boot entry is
+  # missing, the user will see "no bootable device" — catch it here.
+  if ! xorriso -indev "$OUTPUT_ISO" -report_el_torito plain 2>&1 | grep -qiE 'efi|boot cat'; then
+    warn "Boot catalog verification didn't find an EFI entry. The ISO may not be bootable."
+    note "  Run: xorriso -indev '$OUTPUT_ISO' -report_el_torito plain"
+    note "  to see the full catalog and diagnose."
+  else
+    ok "Boot catalog verified — ISO should be bootable in UEFI mode"
   fi
 
   ok "Wrote $(du -h "$OUTPUT_ISO" | awk '{print $1}'): $OUTPUT_ISO"

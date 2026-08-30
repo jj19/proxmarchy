@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.41-beta] — 2026-08-29
+
+### Fixed
+- **Custom ISO produced by `build-custom-iso.sh` wasn't
+  bootable.** The xorriso invocation was missing the modern
+  archiso flags that embed the EFI boot image as an MBR
+  partition:
+  - `-append_partition 2 0xef <efiboot.img>` — embeds the EFI
+    image as a partition in the MBR for hybrid boot
+  - `-partition_offset 16` — alignment
+  - `-iso_mbr_part_type 0xef` — sets the MBR partition type
+    to EFI System Partition
+  Without these, some UEFI firmwares don't find the boot
+  image and the VM sits at "no bootable device". The build
+  also now searches canonical archiso paths first
+  (`EFI/archiso/efiboot.img`, `EFI/boot/efiboot.img`,
+  `boot/grub/efiboot.img`) and falls back to a broader `find`
+  if none match. A post-build verification step runs
+  `xorriso -report_el_torito` on the output to confirm the
+  boot entry is present, with a clear warning + diagnostic
+  hint if it's not.
+
 ## [0.1.40-beta] — 2026-08-29
 
 ### Added
