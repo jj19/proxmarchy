@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.33-beta] — 2026-08-29
+
+### Fixed
+- **\`--complete\` next-steps assumed the script was on the Proxmox
+  host.** The green banner in v0.1.32-beta showed \`bash
+  omarchy-vm.sh --complete <vmid>\`, but the script lives on
+  the Mac (in iCloud Drive), not on the Proxmox host. Users got
+  \`bash: omarchy-vm.sh: No such file or directory\`. Replaced
+  with the always-works curl one-liner:
+
+      bash -c "$(curl -fsSL https://raw.githubusercontent.com/jj19/proxmarchy/main/omarchy-vm.sh)" -- --complete <vmid>
+
+  The \`--\` is the bash convention to forward everything after
+  it as positional args to the script, so \`--complete <vmid>\`
+  reaches the script and isn't interpreted by bash. Kept the
+  short form (\`bash omarchy-vm.sh --complete <vmid>\`) as a
+  secondary mention for users who have saved the script on the
+  host.
+
+[0.1.33-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.33-beta
+
 ## [0.1.32-beta] — 2026-08-29
 
 ### Added

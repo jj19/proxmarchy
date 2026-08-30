@@ -27,7 +27,7 @@ set -eEo pipefail
 #   bash -c "$(curl -fsSL '.../omarchy-vm.sh?nocache='$(date +%s))"
 # The first line of the script's runtime output should always be:
 #   "Proxmarchy omarchy-vm.sh v0.X.Y-beta  (commit: <short SHA>)"
-PROXMARCHY_VERSION="0.1.32-beta"
+PROXMARCHY_VERSION="0.1.33-beta"
 PROXMARCHY_GIT_SHA="${PROXMARCHY_GIT_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 echo "Proxmarchy omarchy-vm.sh ${PROXMARCHY_VERSION}  (commit: ${PROXMARCHY_GIT_SHA})"
 
@@ -1160,12 +1160,14 @@ main() {
   echo -e "  When the wizard finishes and you're looking at Hyprland for the first time,"
   echo -e "  run this on the Proxmox host (one command, idempotent):"
   echo
-  echo -e "      ${GN}${BOLD}bash omarchy-vm.sh --complete ${VMID}${CL}"
+  echo -e "      ${GN}${BOLD}bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/omarchy-vm.sh)\" -- --complete ${VMID}${CL}"
   echo
   echo -e "  That: stops the VM, detaches ide1 (cidata) + ide2 (Omarchy ISO) + ide3 (fix"
   echo -e "  CD-ROM), switches boot order to disk-only, removes the source ISOs from"
   echo -e "  Proxmox storage (~6 GB freed), and starts the VM. From then on it boots"
   echo -e "  straight into the installed Hyprland."
+  echo -e "  (If you saved omarchy-vm.sh locally on the host, \`bash omarchy-vm.sh --complete ${VMID}\`"
+  echo -e "  works too. The curl one-liner above always works regardless.)"
   if [[ "$MAC_USER" == "yes" ]]; then
     echo
     echo -e "  ${BOLD}If cloud-init was in the Omarchy image${CL} (it usually is): the mac-fix was"
