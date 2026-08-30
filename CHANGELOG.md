@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.45-beta] — 2026-08-29
+
+### Fixed
+- **`build-custom-iso.sh` failed with "Cannot find path
+  '/var/tmp/.../efiboot.img' in loaded ISO image".** xorriso's
+  `-e` flag treats the path as relative to the ISO source tree
+  (or as a file that should be in the loaded ISO image), not
+  as an absolute host path. The FAT ESP needs to be **inside**
+  the ISO source tree at a known location. The build now
+  copies the FAT image to `EFI/archiso/efiboot.img` (the
+  canonical archiso path) inside the ISO source tree and
+  references it by that relative path with `-e`. This matches
+  what archiso does for its own ISOs.
+
 ## [0.1.44-beta] — 2026-08-29
 
 ### Fixed

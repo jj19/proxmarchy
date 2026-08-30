@@ -355,27 +355,37 @@ repackage_iso() {
     fi
     ok "Built ${fat_mb} MB EFI System Partition: $efiboot_fat"
 
-    # The FAT image must be added as BOTH:
-    #   1. A hidden El Torito boot image (so OVMF/UEFI firmware on a
-    #      CD-ROM device finds it via the boot catalog) — this is
+    # The FAT image must be INSIDE the ISO source tree for xorriso's
+    # `-e` flag to find it. archiso puts its efiboot.img at
+    # `EFI/archiso/efiboot.img` and uses that exact path with `-e`.
+    # We do the same. The file will appear in the ISO at that path
+    # AND be used as the El Torito EFI boot image.
+    local rel_efiboot="EFI/archiso/efiboot.img"
+    local abs_efiboot="$WORK_DIR/extract/${rel_efiboot}"
+    mkdir -p "$(dirname "$abs_efiboot")"
+    if ! cp -f "$efiboot_fat" "$abs_efiboot"; then
+      die "Failed to copy FAT ESP into ISO source tree at $abs_efiboot"
+    fi
+    ok "FAT ESP placed at ${rel_efiboot} in ISO source tree"
+
+    # Use it as BOTH:
+    #   1. A regular El Torito boot image (so OVMF/UEFI firmware on
+    #      a CD-ROM device finds it via the boot catalog) — this is
     #      the actual mechanism that makes the ISO bootable in
-    #      Proxmox. The `-e` flag with a path that's OUTSIDE the
-    #      ISO source tree adds the file as a hidden El Torito
-    #      image rather than as a regular file in the ISO; combined
-    #      with `-no-emul-boot` (hard disk emulation) the 2.88 MB
-    #      floppy size limit doesn't apply.
+    #      Proxmox. With `-no-emul-boot` (hard disk emulation) the
+    #      2.88 MB floppy size limit doesn't apply.
     #   2. A GPT partition (so the same FAT image is also visible
     #      as a disk-style ESP, matching the original Omarchy ISO's
     #      dual approach for max compat).
     xorriso_args+=(
-      -e "$efiboot_fat"
+      -e "$rel_efiboot"
       -no-emul-boot
       -eltorito-alt-boot
-      -append_partition 2 0xef "$efiboot_fat"
+      -append_partition 2 0xef "$abs_efiboot"
       -partition_offset 16
       -iso_mbr_part_type 0xef
     )
-    ok "UEFI boot configured: hidden El Torito image + GPT partition"
+    ok "UEFI boot configured: El Torito image (at ${rel_efiboot}) + GPT partition"
   fi
 
   # GPT partition table (required for modern UEFI to recognize the

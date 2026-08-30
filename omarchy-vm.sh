@@ -27,7 +27,7 @@ set -eEo pipefail
 #   bash -c "$(curl -fsSL '.../omarchy-vm.sh?nocache='$(date +%s))"
 # The first line of the script's runtime output should always be:
 #   "Proxmarchy omarchy-vm.sh v0.X.Y-beta  (commit: <short SHA>)"
-PROXMARCHY_VERSION="0.1.44-beta"
+PROXMARCHY_VERSION="0.1.45-beta"
 PROXMARCHY_GIT_SHA="${PROXMARCHY_GIT_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 echo "Proxmarchy omarchy-vm.sh ${PROXMARCHY_VERSION}  (commit: ${PROXMARCHY_GIT_SHA})"
 
