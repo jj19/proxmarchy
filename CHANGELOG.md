@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.46-beta] — 2026-08-29
+
+### Fixed
+- **Build picked the IA32 EFI binary (`BOOTIA32.EFI`, 6 MB)
+  instead of the x86_64 one (`BOOTx64.EFI`, 6 MB) on case-sensitive
+  filesystems.** The original Omarchy ISO has the file named
+  `BOOTx64.EFI` (lowercase `x`), but the build was looking for
+  `BOOTX64.EFI` (uppercase `X`). On the case-insensitive ISO 9660
+  / FAT filesystems it doesn't matter, but on the extracted ext4
+  filesystem (case-sensitive) the search missed it. The build
+  then fell through to the next entry (`BOOTIA32.EFI`) and used
+  the 32-bit binary. A 32-bit EFI binary won't boot on a 64-bit
+  OVMF VM (Proxmox's default), so the ISO would have failed at
+  boot. Search order now prefers the x86_64 binary in both
+  common case variants (`BOOTx64.EFI` and `BOOTX64.EFI`)
+  before falling back to the IA32 binary.
+
 ## [0.1.45-beta] — 2026-08-29
 
 ### Fixed

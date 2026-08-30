@@ -280,13 +280,22 @@ repackage_iso() {
 
   # UEFI boot image. Modern archiso ISOs use one of two mechanisms:
   #   (1) FAT image at EFI/archiso/efiboot.img (older archiso)
-  #   (2) Raw EFI binary at EFI/BOOT/BOOTX64.EFI (newer archiso —
+  #   (2) Raw EFI binary at EFI/BOOT/BOOTx64.EFI (newer archiso —
   #       Omarchy 4.x is in this camp)
   # xorriso's -e flag accepts both forms. We search for both.
+  #
+  # Important: the canonical name is `BOOTx64.EFI` (lowercase `x`),
+  # which the original Omarchy ISO uses. The ISO filesystem (ISO 9660
+  # with Joliet) is case-insensitive so UEFI firmware doesn't care
+  # about case, but on the extracted ext4 filesystem (case-sensitive)
+  # we need to look for the exact case. We search BOTH and prefer
+  # the x86_64 binary (Proxmox VMs are x86_64 — the IA32 binary
+  # won't boot on a 64-bit OVMF).
   local efi_img=""
   for candidate in \
       "$WORK_DIR/extract/EFI/archiso/efiboot.img" \
       "$WORK_DIR/extract/EFI/boot/efiboot.img" \
+      "$WORK_DIR/extract/EFI/BOOT/BOOTx64.EFI" \
       "$WORK_DIR/extract/EFI/BOOT/BOOTX64.EFI" \
       "$WORK_DIR/extract/EFI/BOOT/BOOTIA32.EFI" \
       "$WORK_DIR/extract/boot/grub/efiboot.img" \
@@ -300,13 +309,13 @@ repackage_iso() {
   done
   if [[ -z "$efi_img" ]]; then
     # Last-ditch: any .efi or efiboot.img anywhere
-    efi_img=$(find "$WORK_DIR/extract" \( -name '*.efi' -o -name 'efiboot.img' -o -name 'BOOTX64.EFI' \) -type f 2>/dev/null | head -n1 || true)
+    efi_img=$(find "$WORK_DIR/extract" \( -name '*.efi' -o -name 'efiboot.img' -o -name 'BOOTX64.EFI' -o -name 'BOOTx64.EFI' \) -type f 2>/dev/null | head -n1 || true)
     if [[ -n "$efi_img" ]]; then
       warn "Using non-canonical EFI image path: ${efi_img#$WORK_DIR/extract/}"
     fi
   fi
   if [[ -z "$efi_img" ]]; then
-    die "No efiboot.img or EFI/BOOT/BOOTX64.EFI found in the source ISO. The ISO might not be UEFI-bootable. Run KEEP_WORKDIR=1 and look at the EFI/ directory in the extracted tree."
+    die "No efiboot.img or EFI/BOOT/BOOTx64.EFI found in the source ISO. The ISO might not be UEFI-bootable. Run KEEP_WORKDIR=1 and look at the EFI/ directory in the extracted tree."
   fi
   local rel_efi="${efi_img#$WORK_DIR/extract/}"
 
