@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.44-beta] — 2026-08-29
+
+### Fixed
+- **Custom ISO produced by `build-custom-iso.sh` boots to
+  "No bootable option or device was found" in OVMF.** The
+  FAT-based ESP was added only as a GPT partition via
+  `-append_partition` — but OVMF in QEMU boots from CD-ROMs
+  via **El Torito**, not GPT. The El Torito catalog was empty
+  so the firmware had nothing to load.
+
+  The original Omarchy ISO uses BOTH: a hidden El Torito
+  image (24 MB FAT with the EFI binaries) AND a GPT partition
+  pointing at the same image. The build now matches that:
+  `-e "$efiboot_fat" -no-emul-boot -eltorito-alt-boot` adds
+  the FAT image as a hidden El Torito entry (no 2.88 MB
+  floppy size limit because of `-no-emul-boot`), and the
+  existing `-append_partition 2 0xef` keeps the GPT entry.
+  The file path being OUTSIDE the ISO source tree is what
+  triggers "hidden El Torito" mode in xorriso — pointing `-e`
+  at a file *inside* the ISO would have triggered the floppy
+  size check we'd been hitting.
+
 ## [0.1.43-beta] — 2026-08-29
 
 ### Fixed

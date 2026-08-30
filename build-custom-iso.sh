@@ -355,15 +355,27 @@ repackage_iso() {
     fi
     ok "Built ${fat_mb} MB EFI System Partition: $efiboot_fat"
 
-    # Use the FAT image as a GPT partition (no El Torito, since
-    # the FAT image is > 2.88 MB and the EFI binary inside is even
-    # bigger). UEFI firmware finds the ESP via GPT.
+    # The FAT image must be added as BOTH:
+    #   1. A hidden El Torito boot image (so OVMF/UEFI firmware on a
+    #      CD-ROM device finds it via the boot catalog) — this is
+    #      the actual mechanism that makes the ISO bootable in
+    #      Proxmox. The `-e` flag with a path that's OUTSIDE the
+    #      ISO source tree adds the file as a hidden El Torito
+    #      image rather than as a regular file in the ISO; combined
+    #      with `-no-emul-boot` (hard disk emulation) the 2.88 MB
+    #      floppy size limit doesn't apply.
+    #   2. A GPT partition (so the same FAT image is also visible
+    #      as a disk-style ESP, matching the original Omarchy ISO's
+    #      dual approach for max compat).
     xorriso_args+=(
+      -e "$efiboot_fat"
+      -no-emul-boot
+      -eltorito-alt-boot
       -append_partition 2 0xef "$efiboot_fat"
       -partition_offset 16
       -iso_mbr_part_type 0xef
     )
-    ok "UEFI boot configured: FAT-based ESP via append_partition + GPT"
+    ok "UEFI boot configured: hidden El Torito image + GPT partition"
   fi
 
   # GPT partition table (required for modern UEFI to recognize the
