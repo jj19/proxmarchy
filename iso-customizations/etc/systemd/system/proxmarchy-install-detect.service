@@ -1,0 +1,19 @@
+[Unit]
+Description=Proxmarchy: detect Omarchy install completion and inject first-boot service
+Documentation=https://github.com/jj19/proxmarchy
+# Start once the live env is up. We don't need network — we just
+# watch /mnt (the install target) for the wizard to finish.
+After=multi-user.target
+
+[Service]
+Type=simple
+# Poll every 2 seconds for up to 45 minutes (the Omarchy install is
+# normally a few minutes; 45 leaves headroom for slow hosts).
+ExecStart=/usr/local/bin/proxmarchy-install-detect.sh
+Restart=no
+# Keep it visible in `journalctl -u proxmarchy-install-detect`
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

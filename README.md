@@ -126,6 +126,12 @@ manually later with `qm set <vmid> -delete ide2`.
 
 ## What the end user does after the one-liner
 
+Two flows, pick one:
+
+**Standard flow** (uses the upstream Omarchy ISO + the data CD-ROM
+for the mac-fix; requires the user to run `--complete` once after
+the wizard finishes):
+
 The script ends with:
 
 ```
@@ -282,15 +288,82 @@ stale mirror anywhere in the chain.
 
 ```
 omarchy/
-├── omarchy-vm.sh          # Proxmox-host one-liner (this is the main one)
-├── omarchy-in-vm.sh       # in-VM one-liner (Arch → Omarchy)
-├── fix-mac-super-key.sh   # in-VM one-liner: remap Super → Alt for noVNC on macOS
-├── force-fresh.sh         # Proxmox-host: bypasses all HTTP caches via git clone
-├── README.md              # this file
-├── LICENSE                # MIT
-├── CHANGELOG.md           # per-version notes
-└── VERSION                # current version
+├── omarchy-vm.sh                # Proxmox-host one-liner (this is the main one)
+├── omarchy-in-vm.sh             # in-VM one-liner (Arch → Omarchy)
+├── fix-mac-super-key.sh         # in-VM one-liner: remap Super → Alt for noVNC on macOS
+├── force-fresh.sh               # Proxmox-host: bypasses all HTTP caches via git clone
+├── build-custom-iso.sh          # Proxmox-host: build a Proxmarchy-customized Omarchy ISO
+├── iso-customizations/          # Files injected by build-custom-iso.sh
+│   ├── etc/systemd/system/proxmarchy-install-detect.service
+│   └── usr/local/bin/proxmarchy-install-detect.sh
+├── README.md                    # this file
+├── LICENSE                      # MIT
+├── CHANGELOG.md                 # per-version notes
+└── VERSION                      # current version
 ```
+
+---
+
+## Building a Proxmarchy-customized ISO (advanced)
+
+The standard flow asks the end user to run `omarchy-vm.sh --complete`
+once after the Omarchy wizard finishes. For a fully-automated
+"walk through the wizard, log in to Hyprland, done" experience,
+build a custom ISO that auto-applies the mac-fix on first boot
+of the installed system.
+
+**How it works**
+
+1. `build-custom-iso.sh` downloads the latest Omarchy ISO
+2. It extracts the archiso squashfs and injects two things:
+   - `proxmarchy-install-detect.service` (live-env systemd service)
+   - `proxmarchy-install-detect.sh` (watches /mnt for install completion)
+3. It repacks the squashfs and produces
+   `proxmarchy-omarchy-<version>.iso`
+4. When the user boots the custom ISO, the live-env service
+   watches `/mnt` for the install wizard to finish
+5. When the install target is stable (hostname unchanged for
+   10 s), the service writes a `proxmarchy-first-boot.service`
+   into `/mnt/etc/systemd/system/` and `arch-chroot systemctl
+   enable`s it
+6. The system reboots into the installed Omarchy; the
+   first-boot service runs once, applies the mac-fix, and
+   writes a marker file (idempotent on every subsequent boot)
+
+**To build**
+
+```bash
+# On any Linux host (Debian / Ubuntu / Proxmox — needs xorriso,
+# squashfs-tools, curl, sudo):
+sudo apt install xorriso squashfs-tools
+./build-custom-iso.sh
+# Default output: ./proxmarchy-omarchy-<version>.iso
+```
+
+**To use**
+
+1. Upload the custom ISO to Proxmox:
+   ```bash
+   scp proxmarchy-omarchy-4.0.1.iso root@mjproxmox:/var/lib/vz/template/iso/
+   ```
+2. Run `omarchy-vm.sh` and set `ISO_FILE` to
+   `proxmarchy-omarchy-4.0.1.iso` when prompted (or hard-code
+   it in the script for now)
+3. Walk through the wizard. When it finishes, run
+   `--complete` as usual. The fix is applied automatically
+   on first boot of the installed system.
+
+**Caveats**
+
+- The custom ISO is **out of date** the moment a new Omarchy
+  ships. Rebuild it whenever the upstream ISO bumps. The
+  build script always pulls the latest.
+- The custom ISO **bakes in the version of `fix-mac-super-key.sh`
+  that was current when the ISO was built**. Newer fixes won't
+  reach the user until they re-run the curl one-liner or
+  rebuild the ISO. For most cases this is fine — the fix
+  script is stable.
+- This is **beta**. Test on a throwaway VM first.
 
 ---
 
