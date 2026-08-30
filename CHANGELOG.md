@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.39-beta] — 2026-08-29
+
+### Fixed
+- **`build-custom-iso.sh` failed at the xorriso step with
+  `File "/arch/x86_64/airootfs.sfs" cannot be added to image
+  because its size is 4 GiB or larger`.** The repacked
+  airootfs.sfs is 5.6 GB and the default ISO 9660 level (2 or
+  3) caps per-file at 4 GiB. The original Omarchy ISO uses
+  ISO 9660 level 4 to lift that cap to ~4 TiB; the build
+  script now matches by passing `-iso-level 4` to `xorriso
+  -as mkisofs`. UEFI firmware supports level 4 universally,
+  and the Omarchy ISO is UEFI-only anyway, so no compat risk.
+
 ## [0.1.38-beta] — 2026-08-29
 
 ### Fixed

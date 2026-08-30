@@ -251,6 +251,12 @@ repackage_iso() {
   local xorriso_args=(
     -o "$OUTPUT_ISO"
     -R -J
+    # ISO 9660 level 4 lifts the per-file size limit from 4 GiB to ~4 TiB.
+    # Required for any ISO that has a > 4 GiB airootfs.sfs — including
+    # the Omarchy one. The original Omarchy ISO uses this; we have to
+    # match. UEFI firmware supports level 4 universally; older BIOS
+    # firmware might not, but we're already UEFI-only.
+    -iso-level 4
   )
 
   # BIOS / isolinux boot (only if the source ISO has it)
