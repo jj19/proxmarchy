@@ -27,7 +27,7 @@ set -eEo pipefail
 #   bash -c "$(curl -fsSL '.../omarchy-vm.sh?nocache='$(date +%s))"
 # The first line of the script's runtime output should always be:
 #   "Proxmarchy omarchy-vm.sh v0.X.Y-beta  (commit: <short SHA>)"
-PROXMARCHY_VERSION="0.1.39-beta"
+PROXMARCHY_VERSION="0.1.40-beta"
 PROXMARCHY_GIT_SHA="${PROXMARCHY_GIT_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 echo "Proxmarchy omarchy-vm.sh ${PROXMARCHY_VERSION}  (commit: ${PROXMARCHY_GIT_SHA})"
 
@@ -553,6 +553,31 @@ upload_iso_to_storage() {
 # 5. Pull the latest Omarchy ISO (always fresh — but reuse if already there)
 # ----------------------------------------------------------------------------
 download_omarchy_iso() {
+  # Resolve the target directory inside Proxmox storage FIRST so we can
+  # look for a Proxmarchy-customized ISO before scraping omarchy.org.
+  local ISO_DIR TARGET
+  ISO_DIR=$(storage_iso_dir "$STORAGE")
+  if [[ -z "$ISO_DIR" ]]; then
+    msg_error "Storage '${STORAGE}' has no local path (LVM-thin / ZFS / Ceph / etc.)."
+    msg_error "Pick a dir-backed storage for the ISO (typical: 'local')."
+    exit 1
+  fi
+
+  # Prefer a Proxmarchy-customized ISO (built by build-custom-iso.sh) if
+  # one is sitting in the chosen storage. The custom ISO bakes in the
+  # proxmarchy-install-detect service, which makes the post-install
+  # auto-fix path fully hands-off. The file glob is `proxmarchy-omarchy-*.iso`
+  # so any rebuilt version (different Omarchy version) gets picked up.
+  local CUSTOM_ISO
+  CUSTOM_ISO=$(ls -1t "${ISO_DIR}/template/iso/proxmarchy-omarchy-"*.iso 2>/dev/null | head -n1 || true)
+  if [[ -n "$CUSTOM_ISO" ]] && [[ -f "$CUSTOM_ISO" ]]; then
+    ISO_FILE="$(basename "$CUSTOM_ISO")"
+    msg_ok "Using Proxmarchy-customized ISO: ${BL}${ISO_FILE}${CL} ($(du -h "$CUSTOM_ISO" | awk '{print $1}'))"
+    return 0
+  fi
+
+  # Fall back to the upstream Omarchy ISO. Scrape the index for the
+  # latest version.
   msg_info "Fetching the latest Omarchy ISO URL from ${OMARCHY_HOME}"
   local ISO_URL
   ISO_URL=$(curl -fsSL "$OMARCHY_HOME" \
@@ -571,15 +596,6 @@ download_omarchy_iso() {
   fi
   msg_ok "Latest Omarchy ISO: ${BL}${ISO_URL}${CL}"
   ISO_FILE="$(basename "$ISO_URL")"
-
-  # Resolve the target path inside Proxmox storage
-  local ISO_DIR TARGET
-  ISO_DIR=$(storage_iso_dir "$STORAGE")
-  if [[ -z "$ISO_DIR" ]]; then
-    msg_error "Storage '${STORAGE}' has no local path (LVM-thin / ZFS / Ceph / etc.)."
-    msg_error "Pick a dir-backed storage for the ISO (typical: 'local')."
-    exit 1
-  fi
   TARGET="${ISO_DIR}/template/iso/${ISO_FILE}"
 
   # If the exact same ISO is already in the chosen Proxmox storage, reuse

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.40-beta] — 2026-08-29
+
+### Added
+- **`omarchy-vm.sh` auto-detects Proxmarchy-customized ISOs.**
+  Before scraping `omarchy.org` for the latest ISO, the script
+  now looks in the chosen Proxmox storage for any file matching
+  `proxmarchy-omarchy-*.iso` (the output of
+  `build-custom-iso.sh`). If found, it uses that — bypassing the
+  upstream download. The glob picks up any version (rebuilt
+  against a newer Omarchy, etc.) without code changes. The
+  custom ISO path is preferred over the upstream one when both
+  are present. To use the upstream ISO instead, just remove
+  any `proxmarchy-omarchy-*.iso` from the storage.
+
 ## [0.1.39-beta] — 2026-08-29
 
 ### Fixed
