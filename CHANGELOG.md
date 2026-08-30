@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.34-beta] — 2026-08-29
+
+### Removed
+- **cidata drive (cloud-init auto-fix).** The Omarchy ISO is a
+  live environment that ships with cloud-init (for cloud use
+  cases), so the moment the live session boots, cloud-init sees
+  our cidata drive (volume label "cidata"), processes the
+  user-data, runs the fix in the live environment, and writes
+  the marker file to the *live* filesystem. By the time the
+  user finished the wizard and rebooted into the installed
+  system, cloud-init had already consumed the cidata and the
+  auto-fix never ran on the system that actually needed it.
+  cidata is fundamentally broken for live-ISO installs. The
+  `build_cidata_iso` function is kept dormant (not called) for
+  cleanup of stale VMs from v0.1.32/v0.1.33; `--complete` will
+  still detach ide1 and remove proxmarchy-cidata.iso from
+  Proxmox storage if they exist.
+
+  The "auto-fix on first boot of the installed system" requires
+  either a custom Omarchy ISO with a systemd first-boot service
+  or modifying the Omarchy install itself — both v0.2.0+ work.
+
+### Changed
+- **next-steps mac-fix section no longer mentions cloud-init
+  auto-fix.** Replaced with the two reliable paths: the
+  pre-staged data CD-ROM (auto-mounted at
+  `/run/media/<user>/FIX/fix.sh`) and the GitHub curl one-liner.
+  Also added a `find /run/media -name fix.sh` one-liner that
+  works regardless of which username the user chose during the
+  wizard.
+
+[0.1.34-beta]: https://github.com/jj19/proxmarchy/releases/tag/v0.1.34-beta
+
 ## [0.1.33-beta] — 2026-08-29
 
 ### Fixed

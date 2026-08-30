@@ -27,7 +27,7 @@ set -eEo pipefail
 #   bash -c "$(curl -fsSL '.../omarchy-vm.sh?nocache='$(date +%s))"
 # The first line of the script's runtime output should always be:
 #   "Proxmarchy omarchy-vm.sh v0.X.Y-beta  (commit: <short SHA>)"
-PROXMARCHY_VERSION="0.1.33-beta"
+PROXMARCHY_VERSION="0.1.34-beta"
 PROXMARCHY_GIT_SHA="${PROXMARCHY_GIT_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 echo "Proxmarchy omarchy-vm.sh ${PROXMARCHY_VERSION}  (commit: ${PROXMARCHY_GIT_SHA})"
 
@@ -668,24 +668,28 @@ build_mac_fix_iso() {
 }
 
 # ----------------------------------------------------------------------------
-# 6c. cidata ISO (cloud-init NoCloud datasource)
+# 6c. cidata ISO (cloud-init NoCloud datasource) — LEGACY, NOT CALLED
 #
-# Why: we want the mac-fix to apply automatically on first boot, without
-# the user having to open a terminal in Hyprland and run anything. The
-# standard Linux mechanism for "run this on first boot" is cloud-init,
-# which looks for a CD-ROM (or any disk) with volume label "cidata" or
-# "config-2" and processes the user-data inside.
+# Historical context: v0.1.32-beta and v0.1.33-beta attached a cidata
+# drive to the VM so cloud-init could auto-apply the mac-fix on first
+# boot of the installed system. This turned out to be broken for the
+# Omarchy install path: the Omarchy ISO is a LIVE environment, and the
+# live session's cloud-init detects the cidata drive (label "cidata")
+# and processes it during the wizard — i.e. on the live filesystem,
+# not the installed one. By the time the user finished the wizard and
+# rebooted into the installed system, cloud-init had already "consumed"
+# the cidata and the marker file was on the (now-orphaned) live
+# filesystem. The auto-fix never actually ran on the installed system.
 #
-# We attach the cidata drive as ide1. The Omarchy ISO stays on ide2 and
-# is what the firmware boots from. cidata is processed by cloud-init
-# (if installed in the guest) AFTER the OS boots for the first time.
+# The function is kept here (and the build artifacts referenced by
+# `complete_install`'s cleanup paths) for backward compat with VMs
+# that were created with v0.1.32-beta or v0.1.33-beta. Do NOT call
+# this from `main()` — `--complete` will tidy up any leftover
+# proxmarchy-cidata.iso in Proxmox storage.
 #
-# If cloud-init isn't installed in the Omarchy image (archinstall's
-# default install doesn't always include it), the cidata drive is just
-# an unread CD-ROM. We don't fail — the user gets a clear "run the
-# GitHub one-liner if cidata didn't apply" message in next-steps as a
-# fallback. Either way, the cidata is a no-op when the conditions
-# aren't met, not a hard error.
+# The "real" auto-fix would require either a custom Omarchy ISO with
+# a systemd first-boot service, or modifying the Omarchy install
+# itself. Both are v0.2.0+ work.
 # ----------------------------------------------------------------------------
 build_cidata_iso() {
   local CIDATA_DIR DATA_ISO INSTANCE_ID
@@ -825,13 +829,6 @@ create_vm() {
   # local command (no clipboard needed).
   if [[ "$MAC_USER" == "yes" ]]; then
     qm set "$VMID" -ide3 "${STORAGE}:iso/proxmarchy-fix.iso,media=cdrom" >/dev/null
-    # Also attach the cidata drive (cloud-init NoCloud datasource) on
-    # ide1. cloud-init (if installed in the Omarchy image) will detect
-    # the volume label "cidata" and process the user-data on first
-    # boot — which includes auto-applying the mac-fix. If cloud-init
-    # isn't installed, the drive is just an unread CD-ROM; the user
-    # can still apply the fix manually via the GitHub one-liner.
-    qm set "$VMID" -ide1 "${STORAGE}:iso/proxmarchy-cidata.iso,media=cdrom" >/dev/null
   fi
 
   # Boot order: ISO first, disk second.
@@ -930,7 +927,11 @@ post_install_cleanup() {
 # This does ALL the host-side cleanup in one shot:
 #   1. Gracefully stops the VM (so the install-loop re-runs don't fight
 #      with the detach)
-#   2. Detaches ide1 (cidata), ide2 (Omarchy ISO), ide3 (fix CD-ROM)
+#   2. Detaches ide2 (Omarchy ISO) + ide3 (fix CD-ROM). Also tries
+#      to detach ide1 (cidata) and remove proxmarchy-cidata.iso for
+#      VMs that were created with v0.1.32-beta/v0.1.33-beta (the
+#      cidata approach was removed in v0.1.34-beta because it
+#      conflicted with the live ISO's cloud-init).
 #   3. Switches boot order from `ide2;scsi0` (ISO first) to `scsi0` only
 #   4. Removes the source ISOs from Proxmox storage to free disk space
 #   5. Starts the VM, which now boots from disk into Hyprland
@@ -957,8 +958,10 @@ complete_install() {
     msg_info "VM was already stopped"
   fi
 
-  # 2. Detach all install-time CD-ROMs (cidata, Omarchy ISO, fix CD-ROM).
-  # Each is a no-op if the device isn't there (idempotent).
+  # 2. Detach all install-time CD-ROMs (Omarchy ISO, fix CD-ROM, and
+  # the legacy cidata drive from v0.1.32/v0.1.33 in case the user
+  # is upgrading from one of those). Each is a no-op if the device
+  # isn't there (idempotent).
   for dev in ide1 ide2 ide3; do
     if qm set "$vmid" -delete "$dev" >/dev/null 2>&1; then
       msg_ok "Detached ${dev}"
@@ -1070,10 +1073,6 @@ main() {
   # to a file we already placed in the VM.
   if [[ "$MAC_USER" == "yes" ]]; then
     build_mac_fix_iso
-    # Also build the cidata drive so cloud-init (if installed in the
-    # Omarchy image) auto-applies the fix on first boot. The user can
-    # still fall back to the manual one-liner if cidata didn't take.
-    build_cidata_iso
   fi
 
   create_vm
@@ -1162,22 +1161,25 @@ main() {
   echo
   echo -e "      ${GN}${BOLD}bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/omarchy-vm.sh)\" -- --complete ${VMID}${CL}"
   echo
-  echo -e "  That: stops the VM, detaches ide1 (cidata) + ide2 (Omarchy ISO) + ide3 (fix"
-  echo -e "  CD-ROM), switches boot order to disk-only, removes the source ISOs from"
-  echo -e "  Proxmox storage (~6 GB freed), and starts the VM. From then on it boots"
-  echo -e "  straight into the installed Hyprland."
+  echo -e "  That: stops the VM, detaches ide2 (Omarchy ISO) + ide3 (fix CD-ROM), switches"
+  echo -e "  boot order to disk-only, removes the source ISOs from Proxmox storage"
+  echo -e "  (~6 GB freed), and starts the VM. From then on it boots straight into the"
+  echo -e "  installed Hyprland."
   echo -e "  (If you saved omarchy-vm.sh locally on the host, \`bash omarchy-vm.sh --complete ${VMID}\`"
   echo -e "  works too. The curl one-liner above always works regardless.)"
   if [[ "$MAC_USER" == "yes" ]]; then
     echo
-    echo -e "  ${BOLD}If cloud-init was in the Omarchy image${CL} (it usually is): the mac-fix was"
-    echo -e "  applied automatically on first boot. After --complete, log in via SDDM and"
-    echo -e "  ${YW}Alt+Space${CL} should open the Omarchy menu. Done."
+    echo -e "  ${BOLD}Apply the mac-fix in Hyprland${CL} (one of these — the data CD-ROM is still"
+    echo -e "  attached at \`/run/media/${USER:-<your-username>}/FIX/\`):"
     echo
-    echo -e "  ${BOLD}If cloud-init wasn't there${CL} (rare, but possible): after --complete, open a"
-    echo -e "  terminal in Hyprland and run the fallback one-liner:"
+    echo -e "      ${GN}bash /run/media/\$(ls /run/media/ | head -1)/FIX/fix.sh${CL}"
+    echo
+    echo -e "  Or, in a Hyprland terminal, the GitHub one-liner (longer but always works):"
     echo
     echo -e "      ${BL}curl -fsSL https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/fix-mac-super-key.sh | bash${CL}"
+    echo
+    echo -e "  After it runs, ${YW}Alt+Space${CL} opens the Omarchy menu. Re-run with \`--undo\` to"
+    echo -e "  revert. (See the script header for the undo one-liner.)"
   fi
   echo -e "${GN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${CL}"
   echo
