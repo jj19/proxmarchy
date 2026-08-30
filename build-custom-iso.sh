@@ -244,20 +244,49 @@ repackage_iso() {
   fi
   rm -f "$OUTPUT_ISO"
 
-  # xorriso -as mkisofs is the modern way to build a hybrid (UEFI+BIOS)
-  # ISO from a directory. The original archiso mkisofs flags are
-  # embedded in the source ISO; we use the same approach.
-  if ! xorriso -as mkisofs \
-      -o "$OUTPUT_ISO" \
-      -isohybrid-mbr "$WORK_DIR/extract/isolinux/isohdpfx.bin" \
-      -b isolinux/isolinux.bin \
-      -c isolinux/boot.cat \
-      -no-emul-boot -boot-load-size 4 -boot-info-table \
-      -eltorito-alt-boot \
-      -e EFI/archiso/efiboot.img \
-      -no-emul-boot -isohybrid-gpt-basdat \
-      "$WORK_DIR/extract" 2>&1 | tail -20; then
-    die "xorriso failed"
+  # Build the right xorriso flags based on what the source ISO actually
+  # has. Modern archiso ISOs (including the Omarchy one) are UEFI-only
+  # and have no isolinux/ — so the hybrid BIOS+UEFI flags fail. We
+  # detect what's there and pass only the relevant ones.
+  local xorriso_args=(
+    -o "$OUTPUT_ISO"
+    -R -J
+  )
+
+  # BIOS / isolinux boot (only if the source ISO has it)
+  if [[ -f "$WORK_DIR/extract/isolinux/isolinux.bin" ]] \
+     && [[ -f "$WORK_DIR/extract/isolinux/isohdpfx.bin" ]]; then
+    xorriso_args+=(
+      -isohybrid-mbr "$WORK_DIR/extract/isolinux/isohdpfx.bin"
+      -b isolinux/isolinux.bin
+      -c isolinux/boot.cat
+      -no-emul-boot -boot-load-size 4 -boot-info-table
+    )
+    ok "BIOS (isolinux) boot loader detected"
+  else
+    note "  No isolinux/ — building UEFI-only ISO"
+  fi
+
+  # UEFI / efiboot.img (most modern archiso ISOs have this)
+  local efi_img
+  efi_img=$(find "$WORK_DIR/extract" -name 'efiboot.img' -type f 2>/dev/null | head -n1 || true)
+  if [[ -n "$efi_img" ]]; then
+    local rel_efi="${efi_img#$WORK_DIR/extract/}"
+    xorriso_args+=(
+      -eltorito-alt-boot
+      -e "$rel_efi"
+      -no-emul-boot
+    )
+    ok "UEFI boot image: $rel_efi"
+  fi
+
+  # GPT basdat is required for UEFI booting off optical media
+  if [[ -n "$efi_img" ]]; then
+    xorriso_args+=(-isohybrid-gpt-basdat)
+  fi
+
+  if ! xorriso -as mkisofs "${xorriso_args[@]}" "$WORK_DIR/extract" 2>&1 | tail -20; then
+    die "xorriso failed (try running with KEEP_WORKDIR=1 to inspect the extracted tree)"
   fi
 
   ok "Wrote $(du -h "$OUTPUT_ISO" | awk '{print $1}'): $OUTPUT_ISO"

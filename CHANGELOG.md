@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.38-beta] — 2026-08-29
+
+### Fixed
+- **`build-custom-iso.sh` failed at the xorriso step with
+  `isohdpfx.bin does not exist` and `isolinux.bin does not
+  exist`.** The Omarchy ISO (and most modern archiso ISOs) is
+  UEFI-only and has no `isolinux/` directory at all; the
+  script was unconditionally passing BIOS/isolinux boot flags
+  that referenced non-existent files. The repackage step now
+  **auto-detects** what's in the source ISO:
+  - If `isolinux/isolinux.bin` and `isolinux/isohdpfx.bin`
+    are both present: hybrid (BIOS+UEFI) layout (older
+    archiso ISOs).
+  - Otherwise: UEFI-only layout using whatever `efiboot.img`
+    is found anywhere in the tree.
+  - GPT basdat flag is only added when there's a UEFI image.
+  The `xorriso -as mkisofs` invocation is now built from a
+  `xorriso_args` array so the right flags are always passed.
+
 ## [0.1.37-beta] — 2026-08-29
 
 ### Fixed
