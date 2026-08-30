@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.42-beta] — 2026-08-29
+
+### Fixed
+- **`build-custom-iso.sh` failed with "No efiboot.img found in
+  the source ISO".** The Omarchy ISO (4.x) doesn't use the
+  older archiso FAT-image-at-`EFI/archiso/efiboot.img` pattern;
+  it puts a raw EFI binary at `EFI/BOOT/BOOTX64.EFI` (and/or
+  `EFI/BOOT/BOOTIA32.EFI`) directly, and the modern xorriso
+  `-e` flag accepts both forms. The build script now searches
+  a broader list of canonical paths including `EFI/BOOT/BOOTX64.EFI`,
+  `EFI/BOOT/BOOTIA32.EFI`, `boot/grub/efiboot.img`, and
+  `boot/grub/x86_64-efi/core.efi`, with a final `find` fallback
+  for any `*.efi` / `efiboot.img` / `BOOTX64.EFI` anywhere in
+  the tree.
+
 ## [0.1.41-beta] — 2026-08-29
 
 ### Fixed

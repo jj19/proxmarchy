@@ -273,29 +273,35 @@ repackage_iso() {
     note "  No isolinux/ — building UEFI-only ISO"
   fi
 
-  # UEFI / efiboot.img (most modern archiso ISOs have this).
-  # Prefer the canonical archiso path; fall back to find if it's
-  # somewhere else.
+  # UEFI boot image. Modern archiso ISOs use one of two mechanisms:
+  #   (1) FAT image at EFI/archiso/efiboot.img (older archiso)
+  #   (2) Raw EFI binary at EFI/BOOT/BOOTX64.EFI (newer archiso —
+  #       Omarchy 4.x is in this camp)
+  # xorriso's -e flag accepts both forms. We search for both.
   local efi_img=""
   for candidate in \
       "$WORK_DIR/extract/EFI/archiso/efiboot.img" \
       "$WORK_DIR/extract/EFI/boot/efiboot.img" \
+      "$WORK_DIR/extract/EFI/BOOT/BOOTX64.EFI" \
+      "$WORK_DIR/extract/EFI/BOOT/BOOTIA32.EFI" \
       "$WORK_DIR/extract/boot/grub/efiboot.img" \
+      "$WORK_DIR/extract/boot/grub/x86_64-efi/core.efi" \
     ; do
     if [[ -f "$candidate" ]]; then
       efi_img="$candidate"
-      ok "EFI image at canonical path: ${candidate#$WORK_DIR/extract/}"
+      ok "EFI boot image: ${candidate#$WORK_DIR/extract/}"
       break
     fi
   done
   if [[ -z "$efi_img" ]]; then
-    efi_img=$(find "$WORK_DIR/extract" -name 'efiboot.img' -type f 2>/dev/null | head -n1 || true)
+    # Last-ditch: any .efi or efiboot.img anywhere
+    efi_img=$(find "$WORK_DIR/extract" \( -name '*.efi' -o -name 'efiboot.img' -o -name 'BOOTX64.EFI' \) -type f 2>/dev/null | head -n1 || true)
     if [[ -n "$efi_img" ]]; then
       warn "Using non-canonical EFI image path: ${efi_img#$WORK_DIR/extract/}"
     fi
   fi
   if [[ -z "$efi_img" ]]; then
-    die "No efiboot.img found in the source ISO. The ISO might not be UEFI-bootable."
+    die "No efiboot.img or EFI/BOOT/BOOTX64.EFI found in the source ISO. The ISO might not be UEFI-bootable. Run KEEP_WORKDIR=1 and look at the EFI/ directory in the extracted tree."
   fi
   local rel_efi="${efi_img#$WORK_DIR/extract/}"
 
