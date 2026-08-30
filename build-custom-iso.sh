@@ -63,9 +63,14 @@ fi
 # ── 0. Preflight ───────────────────────────────────────────────────────
 preflight() {
   note "${BL}── Preflight ──${CL}"
-  for tool in xorriso unsquashfs mksquashfs curl; do
+  for tool in xorriso unsquashfs mksquashfs curl mkfs.fat mcopy mmd; do
     if ! command -v "$tool" >/dev/null 2>&1; then
-      die "Missing tool: $tool. Install with: apt install xorriso squashfs-tools curl"
+      case "$tool" in
+        mkfs.fat)  pkg="dosfstools" ;;
+        mcopy|mmd) pkg="mtools" ;;
+        *)         pkg="xorriso squashfs-tools curl" ;;
+      esac
+      die "Missing tool: $tool. Install with: apt install $pkg"
     fi
     ok "$tool"
   done
@@ -305,20 +310,61 @@ repackage_iso() {
   fi
   local rel_efi="${efi_img#$WORK_DIR/extract/}"
 
-  # EFI boot — both El Torito (for UEFI firmware reading the catalog)
-  # AND append_partition (for hybrid MBR so the EFI image is also a
-  # partition on the disk-style GPT). The original Omarchy ISO uses
-  # this pattern; without append_partition some UEFI firmwares won't
-  # find the boot image.
-  xorriso_args+=(
-    -e "$rel_efi"
-    -eltorito-alt-boot
-    -no-emul-boot
-    -append_partition 2 0xef "$efi_img"
-    -partition_offset 16
-    -iso_mbr_part_type 0xef
-  )
-  ok "UEFI boot configured: El Torito + append_partition + GPT"
+  # The El Torito boot catalog is limited to floppy-sized images
+  # (1.2/1.44/2.88 MB), but the Omarchy ISO's EFI binary is ~6 MB.
+  # We CAN'T use the raw EFI binary as `-e` for El Torito. The fix:
+  # build a small FAT image (a valid EFI System Partition) that
+  # contains the EFI binary, and use that for the GPT partition
+  # via -append_partition. UEFI firmware finds the ESP via GPT
+  # and boots from it — El Torito is irrelevant for UEFI.
+  local efi_size_kb
+  efi_size_kb=$(du -k "$efi_img" | awk '{print $1}')
+  if (( efi_size_kb <= 2880 )); then
+    # Small enough to use directly as El Torito boot image
+    xorriso_args+=(
+      -e "$rel_efi"
+      -eltorito-alt-boot
+      -no-emul-boot
+      -append_partition 2 0xef "$efi_img"
+      -partition_offset 16
+      -iso_mbr_part_type 0xef
+    )
+    ok "UEFI boot: EFI binary is small enough (${efi_size_kb} KB) — using directly as El Torito + GPT partition"
+  else
+    # Too big for El Torito. Build a small FAT image containing the
+    # EFI binary and use that as the GPT partition.
+    note "  EFI binary is ${efi_size_kb} KB — too big for El Torito (2.88 MB limit)"
+    note "  Building a small FAT image (EFI System Partition) containing the binary"
+    local efiboot_fat="$WORK_DIR/efiboot.img"
+    # Round up the FAT image size to the next power of 2 MB, with
+    # at least 4 MB of headroom for FAT overhead
+    local fat_mb=$(( (efi_size_kb / 1024) + 4 ))
+    if (( fat_mb < 32 )); then fat_mb=32; fi
+    if ! dd if=/dev/zero of="$efiboot_fat" bs=1M count="$fat_mb" status=none; then
+      die "dd failed creating $efiboot_fat"
+    fi
+    if ! mkfs.fat -F 32 "$efiboot_fat" >/dev/null 2>&1; then
+      die "mkfs.fat failed on $efiboot_fat"
+    fi
+    # mmd/mcopy want the relative path inside the FAT image
+    if ! mmd -i "$efiboot_fat" ::/EFI ::/EFI/BOOT 2>/dev/null; then
+      die "mmd failed creating EFI/BOOT in $efiboot_fat"
+    fi
+    if ! mcopy -i "$efiboot_fat" "$efi_img" ::/EFI/BOOT/BOOTX64.EFI; then
+      die "mcopy failed copying EFI binary into $efiboot_fat"
+    fi
+    ok "Built ${fat_mb} MB EFI System Partition: $efiboot_fat"
+
+    # Use the FAT image as a GPT partition (no El Torito, since
+    # the FAT image is > 2.88 MB and the EFI binary inside is even
+    # bigger). UEFI firmware finds the ESP via GPT.
+    xorriso_args+=(
+      -append_partition 2 0xef "$efiboot_fat"
+      -partition_offset 16
+      -iso_mbr_part_type 0xef
+    )
+    ok "UEFI boot configured: FAT-based ESP via append_partition + GPT"
+  fi
 
   # GPT partition table (required for modern UEFI to recognize the
   # ISO as a bootable disk)

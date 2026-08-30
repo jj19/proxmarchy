@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.43-beta] — 2026-08-29
+
+### Fixed
+- **`build-custom-iso.sh` failed with "Invalid image size 6092 Kb. Must be one of 1.2, 1.44 or 2.88 Mb".** El Torito boot images are limited to floppy sizes (max 2.88 MB), but the Omarchy ISO's `EFI/BOOT/BOOTX64.EFI` is ~6 MB. The build now:
+  - Detects the EFI binary size.
+  - If ≤ 2.88 MB: use directly as `-e` (El Torito) + append_partition.
+  - If > 2.88 MB: build a small FAT image (a valid EFI System Partition) that contains the EFI binary, and use that as a GPT partition via `-append_partition 2 0xef` only (no El Torito, since the FAT image is also > 2.88 MB). UEFI firmware finds the ESP via GPT and boots from it.
+  - Uses `dd` + `mkfs.fat` (dosfstools) + `mmd`/`mcopy` (mtools) to build the FAT image. Both are now in the preflight check.
+  - Sizes the FAT image to `(efi_size_kb / 1024) + 4` MB, with a 32 MB floor (e.g. 10 MB binary → 14 MB FAT image).
+
 ## [0.1.42-beta] — 2026-08-29
 
 ### Fixed
