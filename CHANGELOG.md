@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.37-beta] — 2026-08-29
+
+### Fixed
+- **`build-custom-iso.sh` failed with "No space left on device"
+  during `unsquashfs` on Proxmox hosts.** Default work dir
+  was `/tmp/proxmarchy-iso-build`, but `/tmp` on Proxmox is
+  often a tmpfs sized to half the RAM (~8-16 GB) and the
+  airootfs extracts to ~12 GB before the build can repack
+  it. Defaulted the work dir to `/var/tmp/proxmarchy-iso-build`
+  (on the root filesystem, typically 50+ GB on Proxmox hosts)
+  and added a disk-space check in `stage_workdir` that bails
+  early with a clear message and an `PROXMARCHY_BUILD_DIR=...`
+  override hint if there's less than 15 GB free.
+
 ## [0.1.36-beta] — 2026-08-29
 
 ### Fixed

@@ -27,7 +27,13 @@ set -eEuo pipefail
 # ── Configuration ──────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CUSTOM_DIR="${SCRIPT_DIR}/iso-customizations"
-WORK_DIR="${PROXMARCHY_BUILD_DIR:-/tmp/proxmarchy-iso-build}"
+WORK_DIR="${PROXMARCHY_BUILD_DIR:-/var/tmp/proxmarchy-iso-build}"
+# Need ~15 GB of free space for the extracted airootfs + the repacked
+# squashfs + the repackaged ISO. /tmp on Proxmox is often a tmpfs sized
+# to half the RAM, so it blows through fast; /var/tmp is on the root
+# filesystem with much more headroom. Override with
+# PROXMARCHY_BUILD_DIR=/path/with/space if neither works.
+REQUIRED_FREE_GB="${PROXMARCHY_REQUIRED_FREE_GB:-15}"
 OMARCHY_ISO_URL="${OMARCHY_ISO_URL:-https://iso.omarchy.org/}"
 OMARCHY_ISO_VERSION="${OMARCHY_ISO_VERSION:-}"   # auto-detect if empty
 ORIGINAL_ISO_CACHE="${PROXMARCHY_ISO_CACHE:-/tmp/omarchy-original.iso}"
@@ -127,6 +133,20 @@ stage_workdir() {
   rm -rf "$WORK_DIR"
   mkdir -p "$WORK_DIR/mnt" "$WORK_DIR/extract" "$WORK_DIR/airootfs"
   ok "Created $WORK_DIR"
+
+  # Disk-space check. The airootfs extracts to ~12 GB; the rebuilt ISO
+  # is another ~6 GB; we want headroom for both + the in-progress
+  # squashfs. Bail early with a clear message if the target filesystem
+  # doesn't have enough room.
+  local free_kb free_gb
+  free_kb=$(df -Pk "$WORK_DIR" | awk 'NR==2 {print $4}')
+  free_gb=$(( free_kb / 1024 / 1024 ))
+  if (( free_gb < REQUIRED_FREE_GB )); then
+    die "$WORK_DIR has only ${free_gb} GB free; need at least ${REQUIRED_FREE_GB} GB." \
+        "Override the work dir with PROXMARCHY_BUILD_DIR=/path/with/space" \
+        "or lower the threshold (NOT recommended) with PROXMARCHY_REQUIRED_FREE_GB=10"
+  fi
+  ok "${free_gb} GB free at $WORK_DIR (need ${REQUIRED_FREE_GB} GB)"
   echo
 }
 
